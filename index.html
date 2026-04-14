@@ -183,39 +183,140 @@
 
 <script>
 const AI_ENDPOINT = "/.netlify/functions/gemini";
-let isLoading = false;
-async function callAI(payload) {
-  if (isLoading) {
-    throw new Error("استنى شوية قبل ما تبعت طلب تاني");
+
+// 🔑 Gemini API Key - يُحفظ في localStorage مرة واحدة
+let GEMINI_KEY = localStorage.getItem('gemini_key') || '';
+
+// 🎯 موديلات Gemini حسب الـ action (بترتيب الأفضل)
+const GEMINI_MODELS = {
+  suggest_titles: ["gemini-2.5-flash"],
+  suggest_category: ["gemini-2.5-flash"],
+  fix_grammar: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  expand_content: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  continue_expand: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  generate_story: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+};
+
+// 📝 Prompts
+function buildPrompt(action, { content, title, category, prompt }) {
+  switch (action) {
+    case "suggest_titles":
+      return `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
+    case "improve_content":
+      return `أعد صياغة القصة التالية بأسلوب أدبي جذاب، مع الحفاظ على جميع الأحداث والشخصيات. لا تقصّر القصة. اجعلها أكثر تشويقاً. أرجع القصة المُحسَّنة فقط:\n\n${content}`;
+    case "expand_content":
+      return `وسّع القصة التالية لتصبح طويلة ومفصّلة (3000-5000 كلمة). أضف تفاصيل ووصف ومشاهد وحوارات، مع الحفاظ على الأحداث الأصلية. اكتب بأسلوب أدبي راقٍ. أرجع القصة الموسّعة فقط:\n\n${content}`;
+    case "continue_expand":
+      return `أكمل توسيع القصة التالية بإضافة 3000-5000 كلمة جديدة. أضف مشاهد فرعية، حوارات، ووصف حسي. حافظ على نفس الأسلوب. أرجع القصة كاملة (الأصل + الإضافات) بدون أي تعليقات:\n\n${content}`;
+    case "fix_grammar":
+      return `صحّح الأخطاء الإملائية واللغوية في النص مع الحفاظ على الأسلوب الأصلي. أرجع النص المُصحَّح فقط:\n\n${content}`;
+    case "generate_story":
+      return `اكتب قصة طويلة ومفصّلة (3000-5000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة بأسلوب سردي جذاب. أرجع القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "أي تصنيف مناسب"}`;
+    case "suggest_category":
+      return `اقرأ القصة وحدد أنسب تصنيف من: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط:\n\n${content}`;
+  }
+  throw new Error("action غير معروف: " + action);
+}
+
+// 🔍 فحص لو الخطأ يسمح بالتحويل لموديل تاني
+function isRetryable(msg) {
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return m.includes("quota") || m.includes("rate limit") || m.includes("exhausted") ||
+         m.includes("429") || m.includes("exceeded") || m.includes("not found") ||
+         m.includes("not supported") || m.includes("404") || m.includes("deprecated") ||
+         m.includes("not available");
+}
+
+// 💾 طلب الـ API Key من المستخدم لو مش موجود
+function ensureGeminiKey() {
+  if (GEMINI_KEY) return true;
+  const key = prompt('مطلوب Gemini API Key (مرة واحدة فقط):\nاحصل عليه من: https://aistudio.google.com/apikey');
+  if (!key || !key.trim()) return false;
+  GEMINI_KEY = key.trim();
+  localStorage.setItem('gemini_key', GEMINI_KEY);
+  toast('تم حفظ المفتاح ✓', 'success');
+  return true;
+}
+
+// 🚀 استدعاء Gemini مباشرة (بدون timeout - يشتغل من المتصفح مباشرة)
+async function callGeminiDirect(model, promptText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text: promptText }] }],
+    generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error?.message || `HTTP ${res.status}`);
   }
 
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  let text = "";
+  for (const p of parts) if (p.text) text += p.text;
+
+  if (!text.trim()) {
+    const reason = data.candidates?.[0]?.finishReason || "UNKNOWN";
+    throw new Error(`رد فاضي من ${model} (${reason})`);
+  }
+
+  return text.trim();
+}
+
+let isLoading = false;
+
+async function callAI(payload) {
+  if (isLoading) throw new Error("استنى شوية قبل ما تبعت طلب تاني");
   isLoading = true;
 
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), 20000);
-
   try {
-    const res = await fetch(AI_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-
-    const text = await res.text();
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error("السيرفر رجع رد غير متوقع");
+    // 🎨 الصور تمشي عبر Netlify (لأن Pollinations يحتاج backend)
+    if (payload.action === 'generate_image') {
+      const res = await fetch(AI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error("السيرفر رجع رد غير متوقع"); }
+      if (!res.ok || data.error) throw new Error(data.error || "حصل خطأ");
+      return data;
     }
 
-    if (!res.ok || data.error) {
-      throw new Error(data.error || "حصل خطأ");
+    // 💬 النصوص تمشي مباشرة من المتصفح لـ Gemini (مفيش timeout)
+    if (!ensureGeminiKey()) {
+      throw new Error("لازم تدخل Gemini API Key");
     }
 
-    return data;
+    const promptText = buildPrompt(payload.action, payload);
+    const models = GEMINI_MODELS[payload.action] || ["gemini-2.5-flash"];
+    let lastError = null;
+
+    for (const model of models) {
+      try {
+        console.log(`[AI] جاري المحاولة بـ ${model}...`);
+        const text = await callGeminiDirect(model, promptText);
+        console.log(`[AI] ✓ نجح ${model}: ${text.length} حرف`);
+        return { success: true, text, model, image: null };
+      } catch (err) {
+        lastError = err.message;
+        console.log(`[AI] ✗ فشل ${model}: ${err.message}`);
+        if (!isRetryable(err.message)) throw err;
+      }
+    }
+
+    throw new Error("فشلت كل الموديلات: " + lastError);
 
   } finally {
     isLoading = false;
