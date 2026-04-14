@@ -1,9 +1,10 @@
-// Netlify Function: Gemini AI Proxy (ZERO CRASH VERSION 🔥)
+
+// Netlify Function: Gemini AI Proxy (FINAL STABLE + IMAGE FIXED)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ===============================
-// SMART FETCH (NO FAIL SYSTEM)
+// SAFE FETCH (ANTI CRASH SYSTEM)
 // ===============================
 async function safeFetch(url, options, retries = 5) {
   let delay = 1500;
@@ -13,17 +14,15 @@ async function safeFetch(url, options, retries = 5) {
       const res = await fetch(url, options);
       const text = await res.text();
 
-      // 🔥 Detect HTML response
+      // 🔥 HTML DETECTION
       if (text.trim().startsWith("<")) {
-        console.log("⚠️ HTML RESPONSE DETECTED");
-        throw new Error("HTML response received instead of JSON");
+        throw new Error("HTML response detected");
       }
 
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        console.log("RAW:", text);
         throw new Error("Invalid JSON response");
       }
 
@@ -31,7 +30,6 @@ async function safeFetch(url, options, retries = 5) {
 
       const msg = data?.error?.message || "";
 
-      // 🔁 Retryable errors
       if (
         msg.includes("high demand") ||
         msg.includes("Quota") ||
@@ -39,21 +37,15 @@ async function safeFetch(url, options, retries = 5) {
         res.status === 429 ||
         res.status >= 500
       ) {
-        console.log(`⏳ Retry in ${delay}ms`);
         await sleep(delay);
         delay *= 2;
         continue;
       }
 
-      throw new Error(msg || "API Error");
+      throw new Error(msg || "API error");
 
     } catch (err) {
-      console.log(`❌ Attempt ${i + 1} failed:`, err.message);
-
-      if (i === retries - 1) {
-        throw err;
-      }
-
+      if (i === retries - 1) throw err;
       await sleep(delay);
       delay *= 2;
     }
@@ -98,9 +90,9 @@ exports.handler = async (event) => {
 
     let finalPrompt = "";
 
-    // =========================
-    // PROMPTS
-    // =========================
+    // ===============================
+    // TEXT ACTIONS
+    // ===============================
     switch (action) {
       case "generate_story":
         finalPrompt = `
@@ -108,7 +100,7 @@ exports.handler = async (event) => {
 
 Part ${part}
 
-${part === 1 ? "ابدأ القصة بقوة" : "اكمل بدون إعادة"}
+${part === 1 ? "ابدأ القصة بقوة" : "اكمل بدون تكرار"}
 
 الفكرة:
 ${prompt}
@@ -120,7 +112,7 @@ ${prompt}
         break;
 
       case "expand_content":
-        finalPrompt = `وسع النص:\n${content}`;
+        finalPrompt = `وسع النص بالكامل:\n${content}`;
         break;
 
       case "improve_content":
@@ -128,17 +120,20 @@ ${prompt}
         break;
 
       case "suggest_titles":
-        finalPrompt = `3 عناوين فقط:\n${content}`;
+        finalPrompt = `اقترح 3 عناوين فقط:\n${content}`;
         break;
 
       case "suggest_category":
-        finalPrompt = `اختار تصنيف واحد:\n${content}`;
+        finalPrompt = `اختار تصنيف واحد فقط:\n${content}`;
         break;
 
       case "fix_grammar":
-        finalPrompt = `صحح فقط:\n${content}`;
+        finalPrompt = `صحح النص فقط:\n${content}`;
         break;
 
+      // ===============================
+      // IMAGE GENERATION (FIXED 🔥)
+      // ===============================
       case "generate_image":
         try {
           const gemini = await safeFetch(
@@ -152,29 +147,36 @@ ${prompt}
                     parts: [
                       {
                         text: `
-Extract ONE cinematic scene from this story and convert it into a highly detailed image prompt.
+You are a cinematic director.
 
-Rules:
-- Choose the most important visual moment in the story
-- Do NOT invent new events
-- Must describe exactly what is happening in the scene
-- Include characters, emotions, environment, lighting, and camera angle
-- Style: cinematic, ultra realistic, dramatic lighting
+Extract ONE real visual scene from the story.
+
+STRICT RULES:
+- Must be a real moment from story
+- No imagination or symbolism
+- Must be visually filmable
+
+Return ONLY one image prompt.
+
+Include:
+- character(s)
+- exact action
+- location
+- lighting
+- camera angle
 
 Story Title: ${title}
 
 Story:
-${content.substring(0, 1000)}
-
-Return ONLY the image prompt.
+${content.substring(0, 1200)}
 `
                       },
                     ],
                   },
                 ],
                 generationConfig: {
-                  maxOutputTokens: 100,
-                  temperature: 0.7,
+                  temperature: 0.3,
+                  maxOutputTokens: 200,
                 },
               }),
             }
@@ -183,9 +185,14 @@ Return ONLY the image prompt.
           const imagePrompt =
             gemini?.candidates?.[0]?.content?.parts?.[0]?.text || title;
 
+          // 🔥 FORCE REALISTIC STYLE (VERY IMPORTANT)
+          const finalImagePrompt =
+            imagePrompt +
+            ", cinematic realistic scene, natural lighting, real environment, story accurate, ultra detailed";
+
           const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-            imagePrompt
-          )}?seed=${Date.now()}`;
+            finalImagePrompt
+          )}?seed=${Date.now()}&model=flux`;
 
           const imgRes = await fetch(imgUrl);
           const buffer = await imgRes.arrayBuffer();
@@ -195,8 +202,8 @@ Return ONLY the image prompt.
             headers,
             body: JSON.stringify({
               success: true,
-              image: Buffer.from(buffer).toString("base64"),
               text: imagePrompt,
+              image: Buffer.from(buffer).toString("base64"),
             }),
           };
         } catch (err) {
@@ -204,7 +211,7 @@ Return ONLY the image prompt.
             statusCode: 500,
             headers,
             body: JSON.stringify({
-              error: "Image failed: " + err.message,
+              error: "Image error: " + err.message,
             }),
           };
         }
@@ -217,11 +224,10 @@ Return ONLY the image prompt.
         };
     }
 
-    // =========================
+    // ===============================
     // CACHE CHECK
-    // =========================
+    // ===============================
     const cacheKey = `${action}_${prompt}_${part}`;
-
     if (cache.has(cacheKey)) {
       return {
         statusCode: 200,
@@ -230,9 +236,9 @@ Return ONLY the image prompt.
       };
     }
 
-    // =========================
+    // ===============================
     // GEMINI CALL
-    // =========================
+    // ===============================
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
     const result = await safeFetch(url, {
@@ -269,8 +275,6 @@ Return ONLY the image prompt.
     };
 
   } catch (error) {
-    console.log("🔥 FINAL ERROR:", error.message);
-
     return {
       statusCode: 500,
       headers,
@@ -278,7 +282,6 @@ Return ONLY the image prompt.
         success: false,
         error: error.message,
         fallback: true,
-        message: "System is in safe mode - retrying recommended",
       }),
     };
   }
