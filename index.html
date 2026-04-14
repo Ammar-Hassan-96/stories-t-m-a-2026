@@ -633,7 +633,7 @@ filtered.map(s => {
     </div>
   `;
 }).join('');
- 
+ }
 function updateStats() {
   document.getElementById('stat-total').textContent = stories.length;
   document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
