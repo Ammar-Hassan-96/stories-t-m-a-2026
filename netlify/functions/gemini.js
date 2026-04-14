@@ -151,7 +151,23 @@ ${prompt}
                   {
                     parts: [
                       {
-                        text: `Cinematic image prompt for: ${title}`,
+                        text: `
+Extract ONE cinematic scene from this story and convert it into a highly detailed image prompt.
+
+Rules:
+- Choose the most important visual moment in the story
+- Do NOT invent new events
+- Must describe exactly what is happening in the scene
+- Include characters, emotions, environment, lighting, and camera angle
+- Style: cinematic, ultra realistic, dramatic lighting
+
+Story Title: ${title}
+
+Story:
+${content.substring(0, 1000)}
+
+Return ONLY the image prompt.
+`
                       },
                     ],
                   },
