@@ -1,5 +1,5 @@
 // Netlify Function: Gemini AI Proxy
-// يخفي الـ API Key ويتعامل مع Gemini بأمان
+// نظام هجين ذكي: يجرب الموديل الأقوى، لو الحصة خلصت يحوّل تلقائياً للموديل الأقل
 
 exports.handler = async (event) => {
   const headers = {
@@ -24,9 +24,25 @@ exports.handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
     }
 
+    // 🎯 استراتيجية الموديلات حسب المهمة
+    // كل قيمة = مصفوفة موديلات بترتيب الأفضل → الأقل (fallback تلقائي)
+    const MODEL_STRATEGY = {
+      // مهام بسيطة: سريعة ومجانية
+      suggest_titles: ["gemini-2.5-flash"],
+      suggest_category: ["gemini-2.5-flash"],
+      fix_grammar: ["gemini-2.5-flash"],
+      
+      // مهام متوسطة: جودة أعلى مع fallback
+      improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
+      
+      // مهام إبداعية عالية: أقوى جودة مع fallback متعدد
+      expand_content: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      continue_expand: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      generate_story: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+    };
+
     // بناء الـ prompt حسب الـ action
     let finalPrompt = "";
-    let useImageModel = false;
 
     switch (action) {
       case "suggest_titles":
@@ -34,119 +50,94 @@ exports.handler = async (event) => {
         break;
 
       case "improve_content":
-        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب وممتع، مع الحفاظ على جميع الأحداث والشخصيات والتفاصيل. لا تقصّر القصة أبداً، بل حافظ على طولها الأصلي أو زده. اجعلها أكثر تشويقاً وحيوية بإضافة وصف أدق ومشاعر أعمق. أرجع القصة المُحسَّنة كاملةً فقط:\n\n${content}`;
+        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي رفيع وجذاب، مع الحفاظ على جميع الأحداث والشخصيات والتفاصيل. لا تقصّر القصة أبداً، بل حافظ على طولها الأصلي أو زده. أضف وصفاً أدق، حواراً داخلياً للشخصيات، ومشاعر أعمق. استخدم لغة أدبية راقية وتقنيات السرد الحديث. أرجع القصة المُحسَّنة كاملةً فقط بدون أي تعليقات:\n\n${content}`;
+        break;
 
       case "expand_content":
-        finalPrompt = `وسّع القصة التالية لتصبح قصة طويلة ومفصّلة بين 3000 و 5000 كلمة. أضف الكثير من التفاصيل والوصف الدقيق للأماكن والشخصيات والمشاعر والحوارات والمشاهد، مع الحفاظ على الأحداث الأصلية وتطويرها. اجعل القصة غنية بالتفاصيل الحسية والحوارات الداخلية للشخصيات. اكتب بأسلوب أدبي جذاب ومتدفق. أرجع القصة الموسّعة كاملةً فقط، بدون أي مقدمات أو تعليقات:\n\n${content}`;
+        finalPrompt = `وسّع القصة التالية لتصبح قصة طويلة ومفصّلة جداً (بين 3000 و 5000 كلمة). أضف الكثير من التفاصيل والوصف الدقيق للأماكن والشخصيات والمشاعر، أضف حوارات داخلية وخارجية، مشاهد فرعية، وتطوير عميق للشخصيات. حافظ على الأحداث الأصلية وطوّرها برمزية وعمق. استخدم تقنيات الأدب الحديث: التوتر المتصاعد، الذروة، الحبكة الثانوية. اكتب بأسلوب أدبي راقٍ ومتدفق. أرجع القصة الموسّعة كاملةً فقط، بدون أي مقدمات أو تعليقات:\n\n${content}`;
+        break;
+
+      case "continue_expand":
+        finalPrompt = `فيما يلي قصة طويلة. مهمتك: أكمل توسيعها وإضافة المزيد من التفاصيل والمشاهد والعمق لتصبح أطول وأغنى (أضف 3000-5000 كلمة جديدة على الأقل). 
+
+قواعد مهمة:
+1. لا تعيد كتابة القصة من البداية - أكمل من حيث انتهت أو أضف تفاصيل للمشاهد الموجودة
+2. أضف: مشاهد فرعية جديدة، حوارات أعمق، وصف حسي مفصّل، شخصيات ثانوية، صراعات داخلية، ذكريات للشخصيات، وصف البيئة والأجواء
+3. حافظ تماماً على نفس الأسلوب واللغة والشخصيات الموجودة
+4. احرص على التماسك السردي - القصة الناتجة يجب أن تكون موحّدة ومتدفقة
+5. لا تضع فواصل أو عناوين مثل "الفصل الثاني" إلا لو كانت موجودة أصلاً
+6. أرجع القصة كاملة (الأصل + الإضافات الجديدة) بدون أي تعليقات أو شرح
+
+القصة الحالية:
+${content}`;
+        break;
 
       case "fix_grammar":
         finalPrompt = `صحّح الأخطاء الإملائية واللغوية في النص التالي مع الحفاظ على الأسلوب واللهجة الأصلية. أرجع النص المُصحَّح فقط بدون أي تعليقات:\n\n${content}`;
         break;
 
       case "generate_story":
-        finalPrompt = `اكتب قصة طويلة ومفصّلة (بين 3000 و 5000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة ومؤثرة، بأسلوب سردي جذاب مع وصف دقيق للشخصيات والأماكن والأحداث والحوارات. استخدم تقنيات الأدب الحديث من توتر وذروة وحبكة متصاعدة. أرجع القصة كاملةً فقط:\n\nالفكرة: ${prompt}\nالتصنيف المطلوب: ${category || "أي تصنيف مناسب"}`;
+        finalPrompt = `اكتب قصة طويلة ومفصّلة (بين 3000 و 5000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة ومؤثرة، بأسلوب سردي جذاب مع وصف دقيق للشخصيات والأماكن والأحداث والحوارات. استخدم تقنيات الأدب الحديث من توتر وذروة وحبكة متصاعدة. أضف رمزية وعمقاً فلسفياً. أرجع القصة كاملةً فقط:\n\nالفكرة: ${prompt}\nالتصنيف المطلوب: ${category || "أي تصنيف مناسب"}`;
+        break;
 
       case "suggest_category":
         finalPrompt = `اقرأ القصة التالية وحدد أنسب تصنيف لها من القائمة التالية فقط: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط (الـ ID بالإنجليزية) بدون أي شرح:\n\n${content}`;
         break;
 
       case "generate_image":
-        // استخدام Pollinations.ai - مجاني بالكامل
-        try {
-          // توليد prompt ذكي بـ Gemini الأول (مجاني)
-          const promptResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: `Create a detailed English image generation prompt (max 200 characters) for an illustration of an Arabic story. Story title: "${title}". Story excerpt: ${content.substring(0, 400)}. The prompt should describe the scene, mood, and art style (cinematic, detailed). Return only the prompt, no explanations.`
-                  }]
-                }],
-                generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
-              })
-            }
-          );
-          const promptData = await promptResponse.json();
-          const imagePrompt = promptData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 
-            `Beautiful artistic illustration for story "${title}"`;
-          
-          // جلب الصورة من Pollinations (مجاني)
-          const encodedPrompt = encodeURIComponent(imagePrompt);
-          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
-          
-          const imgRes = await fetch(pollinationsUrl);
-          if (!imgRes.ok) throw new Error("فشل توليد الصورة");
-          
-          const imgBuffer = await imgRes.arrayBuffer();
-          const imgBase64 = Buffer.from(imgBuffer).toString('base64');
-          
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-              success: true,
-              text: imagePrompt,
-              image: imgBase64
-            })
-          };
-        } catch (err) {
-          return {
-            statusCode: 500,
-            headers,
-            body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message })
-          };
-        }
+        return await handleImageGeneration(API_KEY, title, content, headers);
 
       default:
         return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
     }
 
-    // استدعاء Gemini API
-    const model = useImageModel 
-      ? "gemini-2.5-flash-image"   // Nano Banana
-      : "gemini-2.5-flash";
+    // 🔄 نظام الـ Fallback الذكي
+    const modelsToTry = MODEL_STRATEGY[action] || ["gemini-2.5-flash"];
+    let lastError = null;
+    let usedModel = null;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
-
-    const body = {
-      contents: [{ parts: [{ text: finalPrompt }] }],
-      generationConfig: useImageModel 
-        ? { responseModalities: ["IMAGE", "TEXT"] }
-        : { temperature: 0.8, maxOutputTokens: 8192 }
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return { statusCode: response.status, headers, body: JSON.stringify({ error: data.error?.message || "خطأ من Gemini" }) };
+    for (const model of modelsToTry) {
+      try {
+        const result = await callGemini(API_KEY, model, finalPrompt);
+        if (result.success) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              text: result.text,
+              image: null,
+              model: model // نرجع اسم الموديل المستخدم (للشفافية)
+            })
+          };
+        }
+        lastError = result.error;
+        
+        // لو الخطأ quota/rate limit → جرب الموديل اللي بعده
+        if (isQuotaError(result.error)) {
+          console.log(`[Quota] ${model} خلصت حصته، تحول للتالي...`);
+          continue;
+        }
+        
+        // لو الخطأ مش quota → ارجع الخطأ فوراً
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: result.error })
+        };
+      } catch (err) {
+        lastError = err.message;
+        if (isQuotaError(err.message)) continue;
+        throw err;
+      }
     }
 
-    // معالجة الرد
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    let textResult = "";
-    let imageBase64 = null;
-
-    for (const part of parts) {
-      if (part.text) textResult += part.text;
-      if (part.inlineData?.data) imageBase64 = part.inlineData.data;
-    }
-
+    // لو كل الموديلات خلصت حصتها
     return {
-      statusCode: 200,
+      statusCode: 429,
       headers,
-      body: JSON.stringify({
-        success: true,
-        text: textResult.trim(),
-        image: imageBase64
+      body: JSON.stringify({ 
+        error: "خلصت الحصة اليومية لكل الموديلات. حاول تاني بكرة أو بعد ساعة." 
       })
     };
 
@@ -158,3 +149,93 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// 🔍 فحص لو الخطأ بسبب خلوص الحصة
+function isQuotaError(errorMsg) {
+  if (!errorMsg) return false;
+  const msg = errorMsg.toLowerCase();
+  return msg.includes("quota") || 
+         msg.includes("rate limit") || 
+         msg.includes("resource exhausted") ||
+         msg.includes("429") ||
+         msg.includes("exceeded");
+}
+
+// 📞 استدعاء Gemini API
+async function callGemini(apiKey, model, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      maxOutputTokens: 8192
+    }
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    return { 
+      success: false, 
+      error: data.error?.message || `HTTP ${response.status}` 
+    };
+  }
+
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  let textResult = "";
+  for (const part of parts) {
+    if (part.text) textResult += part.text;
+  }
+
+  return { success: true, text: textResult.trim() };
+}
+
+// 🎨 توليد الصور عبر Pollinations (مجاني)
+async function handleImageGeneration(apiKey, title, content, headers) {
+  try {
+    // الخطوة 1: توليد prompt ذكي بـ Gemini
+    const promptGenResult = await callGemini(
+      apiKey,
+      "gemini-2.5-flash",
+      `Create a detailed English image generation prompt (max 200 characters) for an illustration of an Arabic story. Story title: "${title}". Story excerpt: ${content.substring(0, 400)}. The prompt should describe the scene, mood, and art style (cinematic, detailed, atmospheric). Return only the prompt, no explanations.`
+    );
+
+    const imagePrompt = promptGenResult.success 
+      ? promptGenResult.text 
+      : `Beautiful artistic illustration for story: ${title}`;
+
+    // الخطوة 2: جلب الصورة من Pollinations (مجاني بالكامل)
+    const encodedPrompt = encodeURIComponent(imagePrompt);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
+
+    const imgRes = await fetch(pollinationsUrl);
+    if (!imgRes.ok) throw new Error("فشل توليد الصورة من Pollinations");
+
+    const imgBuffer = await imgRes.arrayBuffer();
+    const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        text: imagePrompt,
+        image: imgBase64,
+        model: "pollinations.ai"
+      })
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message })
+    };
+  }
+}
