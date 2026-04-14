@@ -183,18 +183,44 @@
 
 <script>
 const AI_ENDPOINT = "/.netlify/functions/gemini";
-
+let isLoading = false;
 async function callAI(payload) {
-  const res = await fetch(AI_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok || data.error) throw new Error(data.error || "خطأ غير معروف");
-  return data;
-}
+  if (isLoading) {
+    throw new Error("استنى شوية قبل ما تبعت طلب تاني");
+  }
 
+  isLoading = true;
+
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const res = await fetch(AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("السيرفر رجع رد غير متوقع");
+    }
+
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "حصل خطأ");
+    }
+
+    return data;
+
+  } finally {
+    isLoading = false;
+  }
+}
 function showAIModal(title, body) {
   document.getElementById('ai-modal-title').textContent = title;
   document.getElementById('ai-modal-body').innerHTML = body;
@@ -225,7 +251,7 @@ async function aiSuggestTitles() {
     ).join('');
     showAIModal('✨ اختر العنوان المناسب', html);
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
     closeAIModal();
   }
 }
@@ -265,7 +291,7 @@ async function aiAction(action) {
       '</div>';
     showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
     closeAIModal();
   }
 }
@@ -291,7 +317,7 @@ async function aiGenerateFromIdea() {
       '</div>';
     showAIModal('💡 قصة جديدة', html);
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
     closeAIModal();
   }
 }
@@ -322,7 +348,7 @@ async function aiSuggestCategory() {
       toast('لم يستطع تحديد تصنيف دقيق', 'error');
     }
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
   }
 }
 
@@ -353,7 +379,7 @@ async function aiGenerateImage() {
     closeAIModal();
     toast('✓ تم توليد الصورة ورفعها', 'success');
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
     closeAIModal();
   }
 }
@@ -530,7 +556,7 @@ async function saveStory() {
     toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
     resetForm();
   } catch (e) {
-    toast('خطأ: ' + e.message, 'error');
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
   }
 }
 
