@@ -601,34 +601,52 @@ function renderStories() {
   
   const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
   
-  list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
-    filtered.map(s => `
+list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
+    // داخل وظيفة renderStories ابحث عن السطر الذي يبدأ بـ filtered.map
+filtered.map(s => {
+  // هذا السطر يضمن أخذ وقت التحديث الفعلي لكل قصة من قاعدة البيانات
+  const individualUpdate = s.updated_at ? new Date(s.updated_at) : new Date();
+  
+  const updateDate = individualUpdate.toLocaleString('ar-EG', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: 'numeric',
+    month: 'short'
+  });
+
+  return `
     <div class="story-item">
-      <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
       <div class="story-info">
         <div class="story-title">${escapeHtml(s.title)}</div>
-        <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
         <div style="margin-top:6px">
-          <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
-          <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
-          <span style="color:#90a4ae;font-size:12px">ترتيب: ${s.display_order}</span>
+          <span style="color:#d4af37; font-size: 11px;">🕒 تحديث: ${updateDate}</span>
         </div>
       </div>
-      <div class="story-actions">
-        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
-        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
       </div>
-    </div>
-  `).join('');
+  `;
+}).join('');
 }
 
 function updateStats() {
   document.getElementById('stat-total').textContent = stories.length;
   document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
   document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
-  if (stories.length) {
-    const last = stories.reduce((a, b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
-    document.getElementById('stat-last').textContent = new Date(last.updated_at).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  
+  if (stories.length > 0) {
+    // العثور على أحدث تاريخ تحديث بين كل القصص
+    const latestStory = stories.reduce((prev, current) => {
+      const prevDate = new Date(prev.updated_at || 0);
+      const currentDate = new Date(current.updated_at || 0);
+      return (currentDate > prevDate) ? current : prev;
+    });
+
+    if (latestStory && latestStory.updated_at) {
+      const lastUpdateFormatted = new Date(latestStory.updated_at).toLocaleString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      document.getElementById('stat-last').textContent = lastUpdateFormatted;
+    }
   }
 }
 
