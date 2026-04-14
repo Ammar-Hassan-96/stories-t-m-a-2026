@@ -602,39 +602,24 @@ function renderStories() {
   const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
   
   list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
-filtered.map(s => {
-    // 1. استخراج التاريخ الحقيقي من Supabase لكل قصة على حدة
-    // نستخدم s.updated_at أو s.created_at كبديل إذا كان التحديث فارغاً
-    const rawDate = s.updated_at || s.created_at || new Date().toISOString();
-    
-    // 2. تحويله لصيغة عربية داخل الـ map لضمان التجديد لكل عنصر
-    const formattedTime = new Date(rawDate).toLocaleString('ar-EG', {
-        hour: '2-digit',
-        minute: '2-digit',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-    });
-
-    return `
+    filtered.map(s => `
     <div class="story-item">
-        <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
-        <div class="story-info">
-            <div class="story-title">${escapeHtml(s.title)}</div>
-            <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
-            <div style="margin-top:6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
-                <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
-                <span style="color:#90a4ae; font-size: 11px;">🔢 ترتيب: ${s.display_order}</span>
-                <span style="color:#d4af37; font-size: 11px; border-right: 1px solid #1e4976; padding-right: 8px;">🕒 تحديث: ${formattedTime}</span>
-            </div>
+      <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
+      <div class="story-info">
+        <div class="story-title">${escapeHtml(s.title)}</div>
+        <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
+        <div style="margin-top:6px">
+          <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
+          <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
+          <span style="color:#90a4ae;font-size:12px">ترتيب: ${s.display_order}</span>
         </div>
-        <div class="story-actions">
-            <button class="secondary" onclick="editStory(${s.id})">✏️</button>
-            <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
-        </div>
-    </div>`;
-}).join('');
+      </div>
+      <div class="story-actions">
+        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
+        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
 }
  
 function updateStats() {
