@@ -103,7 +103,6 @@
     <div class="ai-row">
       <button class="ai-btn" onclick="aiAction('improve_content')">📝 تحسين الصياغة</button>
       <button class="ai-btn" onclick="aiAction('expand_content')">📏 تطويل القصة</button>
-      <button class="ai-btn" onclick="aiAction('continue_expand')" style="background: linear-gradient(135deg, #e74c3c, #8e44ad);">🚀 تطويل إضافي (+3000 كلمة)</button>
       <button class="ai-btn" onclick="aiAction('fix_grammar')">✅ تصحيح لغوي</button>
       <button class="ai-btn" onclick="aiGenerateFromIdea()">💡 قصة من فكرة</button>
     </div>
@@ -248,7 +247,6 @@ async function aiAction(action) {
   const titles = {
     improve_content: '📝 جاري تحسين الصياغة...',
     expand_content: '📏 جاري تطويل القصة...',
-    continue_expand: '🚀 جاري إضافة 3000+ كلمة جديدة... (قد يستغرق دقيقة)',
     fix_grammar: '✅ جاري التصحيح اللغوي...'
   };
   
@@ -256,21 +254,13 @@ async function aiAction(action) {
   try {
     const data = await callAI({ action, content });
     pendingAIText = data.text;
-    const wordCount = data.text.trim().split(/\s+/).length;
-    const oldCount = content.trim().split(/\s+/).length;
-    const diff = wordCount - oldCount;
-    const diffText = diff > 0 ? `+${diff}` : diff;
-    const modelUsed = data.model ? `<span style="font-size:11px;color:#90a4ae">| الموديل: ${data.model}</span>` : '';
-    
     const html = 
-      '<p style="color:#90a4ae;margin-bottom:10px">النتيجة: <strong style="color:#d4af37">' + wordCount + ' كلمة</strong> (قبل: ' + oldCount + ' | الفرق: <span style="color:' + (diff > 0 ? '#4caf50' : '#f44336') + '">' + diffText + '</span>) ' + modelUsed + '</p>' +
+      '<p style="color:#90a4ae;margin-bottom:10px">النتيجة:</p>' +
       '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + 
       escapeHtml(data.text) + 
       '</div>' +
       '<div style="display:flex;gap:10px;margin-top:14px">' +
       '<button onclick="applyPendingText()">✓ تطبيق</button>' +
-      (action === 'expand_content' || action === 'continue_expand' ? 
-        '<button onclick="applyAndContinueExpand()" style="background:linear-gradient(135deg,#e74c3c,#8e44ad);color:#fff">🚀 تطبيق + تطويل إضافي</button>' : '') +
       '<button class="secondary" onclick="closeAIModal()">إلغاء</button>' +
       '</div>';
     showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
@@ -278,17 +268,6 @@ async function aiAction(action) {
     toast('خطأ: ' + e.message, 'error');
     closeAIModal();
   }
-}
-
-// تطبيق النتيجة وتطويل إضافي تلقائي
-async function applyAndContinueExpand() {
-  if (!pendingAIText) return;
-  document.getElementById('story-content').value = pendingAIText;
-  pendingAIText = '';
-  closeAIModal();
-  toast('تم التطبيق، جاري التطويل الإضافي...', 'success');
-  // استنى ثانية ثم شغّل التطويل الإضافي
-  setTimeout(() => aiAction('continue_expand'), 500);
 }
 
 // توليد قصة من فكرة
