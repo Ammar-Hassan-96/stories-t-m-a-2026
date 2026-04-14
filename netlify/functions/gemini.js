@@ -105,7 +105,7 @@ async function callGemini(apiKey, model, prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.8, maxOutputTokens: 4096 }
+    generationConfig: { temperature: 0.8, maxOutputTokens: 2500 }
   };
 
   const controller = new AbortController();
