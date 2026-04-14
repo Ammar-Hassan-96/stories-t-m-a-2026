@@ -603,18 +603,16 @@ function renderStories() {
   
 list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
 filtered.map(s => {
-  // 1. حساب التاريخ داخل الـ map لضمان استخراجه لكل قصة بشكل مستقل
-  // نستخدم قيمة العمود القادم من السيرفر (s.updated_at)
-  const lastUpdate = s.updated_at ? new Date(s.updated_at) : new Date();
-  
-  const formattedTime = lastUpdate.toLocaleString('ar-EG', {
+  // حساب التاريخ بشكل منفصل لكل قصة
+  const rawDate = s.updated_at || s.created_at || new Date().toISOString();
+  const formattedTime = new Date(rawDate).toLocaleString('ar-EG', {
     day: 'numeric',
-    month: 'long',
-    year: 'numeric',
+    month: 'short',
     hour: '2-digit',
     minute: '2-digit'
   });
 
+  // يجب وجود كلمة return هنا لكي يعمل الكود
   return `
     <div class="story-item">
       <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
@@ -635,7 +633,7 @@ filtered.map(s => {
     </div>
   `;
 }).join('');
-
+ 
 function updateStats() {
   document.getElementById('stat-total').textContent = stories.length;
   document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
