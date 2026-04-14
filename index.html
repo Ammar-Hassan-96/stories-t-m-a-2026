@@ -638,19 +638,13 @@ filtered.map(s => {
 }
  
 function updateStats() {
-    // ... الكود القديم للإحصائيات ...
-    
-    // لإظهار أحدث وقت تحديث في الموقع فوق (الإحصائية العامة)
-    if (stories.length > 0) {
-        const latest = stories.reduce((a, b) => 
-            new Date(a.updated_at || a.created_at) > new Date(b.updated_at || b.created_at) ? a : b
-        );
-        const topTime = new Date(latest.updated_at || latest.created_at).toLocaleString('ar-EG', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        document.getElementById('stat-last').textContent = topTime;
-    }
+  document.getElementById('stat-total').textContent = stories.length;
+  document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
+  document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
+  if (stories.length) {
+    const last = stories.reduce((a, b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
+    document.getElementById('stat-last').textContent = new Date(last.updated_at).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  }
 }
 
     if (latestStory && latestStory.updated_at) {
