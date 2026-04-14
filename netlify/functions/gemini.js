@@ -147,18 +147,25 @@ async function callGemini(apiKey, model, prompt) {
   }
 }
 
-// 🎨 توليد صور ذكي ومرتبط بمحتوى القصة
-async function handleImageGeneration(apiKey, title, content, category, headers) {
-  try {
-    const categoryMap = {
-      horror: "dark horror scary atmospheric haunting gothic",
-      drama: "emotional dramatic cinematic storytelling",
-      kids: "colorful cheerful cartoon children friendly illustration",
-      "sci-fi": "futuristic space science fiction technology cyberpunk",
-      thriller: "suspenseful mysterious tense dramatic noir",
-      islamic: "spiritual islamic arabic architecture mosque calligraphy",
-      love: "romantic warm emotional heartfelt"
-    };
+async function getRealImages(query) {
+  const accessKey = "YOUR_UNSPLASH_KEY";
+
+  const response = await fetch(
+    `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=3`,
+    {
+      headers: {
+        Authorization: `Client-ID ${accessKey}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  return data.results.map(img => ({
+    url: img.urls.regular,
+    alt: img.alt_description
+  }));
+}
     const styleHint = categoryMap[category] || "cinematic artistic detailed";
 
     // الخطوة 1: نطلب من Gemini prompt إنجليزي دقيق يصف القصة
