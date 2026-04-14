@@ -1,9 +1,11 @@
-// Netlify Function: Gemini AI Proxy (ULTRA OPTIMIZED)
+// Netlify Function: Gemini AI Proxy (ULTIMATE VERSION)
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// 🔥 Retry + Anti-Quota
-async function fetchWithRetry(url, options, retries = 3) {
+// 🔥 Smart Retry (Quota + High Demand)
+async function fetchWithSmartRetry(url, options, retries = 5) {
+  let delay = 2000;
+
   for (let i = 0; i < retries; i++) {
     const res = await fetch(url, options);
     const data = await res.json();
@@ -12,19 +14,21 @@ async function fetchWithRetry(url, options, retries = 3) {
 
     const msg = data.error?.message || "";
 
-    if (msg.includes("Quota") || msg.includes("rate")) {
-      console.log("⏳ Quota hit... waiting 60s");
-      await sleep(60000);
+    // Quota أو ضغط
+    if (msg.includes("Quota") || msg.includes("rate") || msg.includes("high demand")) {
+      console.log(`⏳ Retry بعد ${delay / 1000}s`);
+      await sleep(delay);
+      delay *= 2;
       continue;
     }
 
     throw new Error(msg);
   }
 
-  throw new Error("Max retries exceeded");
+  throw new Error("فشل بعد عدة محاولات");
 }
 
-// 🔥 Cache بسيط (يقلل requests)
+// 🔥 Cache لتقليل الاستهلاك
 const cache = new Map();
 
 exports.handler = async (event) => {
@@ -52,24 +56,14 @@ exports.handler = async (event) => {
 
     let finalPrompt = "";
 
-    // 🔥 دمج العمليات لتقليل requests
+    // 🔥 دمج لتقليل requests
     if (action === "generate_full_package") {
       finalPrompt = `
-أنشئ حزمة كاملة للقصة:
+أنشئ حزمة كاملة:
 
-1. قصة طويلة (3000+ كلمة)
-2. 3 عناوين جذابة
-3. تصنيف واحد مناسب
-
-ارجع بالشكل:
-TITLE:
-...
-TITLES:
-...
-CATEGORY:
-...
-STORY:
-...
+1. قصة (2000 كلمة)
+2. 3 عناوين
+3. تصنيف
 
 الفكرة: ${prompt}
 `;
@@ -77,55 +71,51 @@ STORY:
 
       switch (action) {
 
-        case "suggest_titles":
-          finalPrompt = `اقترح 5 عناوين فقط:\n${content}`;
-          break;
-
-        case "improve_content":
-          finalPrompt = `حسّن النص بدون تقصير:\n${content}`;
-          break;
-
-        case "expand_content":
-          finalPrompt = `
-وسّع النص التالي ليكون 4000+ كلمة.
-
-مهم:
-- لا تختصر
-- لا تتوقف فجأة
-
-${content}`;
-          break;
-
         case "generate_story":
           finalPrompt = `
-اكتب قصة طويلة جدًا (4000+ كلمة)
+اكتب قصة احترافية (1500 - 2000 كلمة)
 
-Part ${part}:
+Part ${part}
 
 ${part === 1 
-? "ابدأ القصة من البداية"
-: "اكمل القصة بدون إعادة"}
+? "ابدأ من البداية"
+: "اكمل بدون إعادة"}
 
 ${prompt}
 
 مهم:
 - لا تختصر
-- استمر حتى النهاية
+- نهاية مفتوحة لو مش آخر جزء
 `;
+          break;
+
+        case "expand_content":
+          finalPrompt = `
+وسع النص إلى 2000 كلمة بدون اختصار:
+
+${content}`;
+          break;
+
+        case "improve_content":
+          finalPrompt = `حسّن النص:\n${content}`;
+          break;
+
+        case "suggest_titles":
+          finalPrompt = `اقترح 5 عناوين:\n${content}`;
+          break;
+
+        case "suggest_category":
+          finalPrompt = `اختار تصنيف:\n${content}`;
           break;
 
         case "fix_grammar":
           finalPrompt = `صحح فقط:\n${content}`;
           break;
 
-        case "suggest_category":
-          finalPrompt = `اختار تصنيف واحد:\n${content}`;
-          break;
-
         case "generate_image":
           try {
-            // 🔥 cache للصورة
             const cacheKey = "img_" + title;
+
             if (cache.has(cacheKey)) {
               return {
                 statusCode: 200,
@@ -134,7 +124,7 @@ ${prompt}
               };
             }
 
-            const promptRes = await fetchWithRetry(
+            const promptRes = await fetchWithSmartRetry(
               `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
               {
                 method: "POST",
@@ -142,7 +132,7 @@ ${prompt}
                 body: JSON.stringify({
                   contents: [{
                     parts: [{
-                      text: `Create short cinematic prompt: ${title}`
+                      text: `cinematic image prompt for ${title}`
                     }]
                   }],
                   generationConfig: { maxOutputTokens: 100 }
@@ -190,17 +180,20 @@ ${prompt}
       };
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+    // 🔥 اختيار موديل حسب الحمل
+    const model = "gemini-2.5-flash";
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
 
     const body = {
       contents: [{ parts: [{ text: finalPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 12000
+        maxOutputTokens: 8000 // 👈 تقليل الضغط
       }
     };
 
-    const data = await fetchWithRetry(url, {
+    const data = await fetchWithSmartRetry(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -219,7 +212,6 @@ ${prompt}
       nextPart: part + 1
     };
 
-    // 🔥 خزّن النتيجة
     cache.set(cacheKey, result);
 
     return {
