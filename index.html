@@ -236,6 +236,9 @@ function applyTitle(title) {
   toast('تم تطبيق العنوان ✓', 'success');
 }
 
+// متغير لحفظ النص المقترح من AI
+let pendingAIText = '';
+
 // تحسين/تطويل/تصحيح المحتوى
 async function aiAction(action) {
   const content = document.getElementById('story-content').value.trim();
@@ -250,25 +253,21 @@ async function aiAction(action) {
   showLoading(titles[action]);
   try {
     const data = await callAI({ action, content });
-    const html = `
-      <p style="color:#90a4ae;margin-bottom:10px">النتيجة:</p>
-      <div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">${escapeHtml(data.text)}</div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button onclick="applyContent(\`${data.text.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">✓ تطبيق</button>
-        <button class="secondary" onclick="closeAIModal()">إلغاء</button>
-      </div>
-    `;
+    pendingAIText = data.text;
+    const html = 
+      '<p style="color:#90a4ae;margin-bottom:10px">النتيجة:</p>' +
+      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + 
+      escapeHtml(data.text) + 
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px">' +
+      '<button onclick="applyPendingText()">✓ تطبيق</button>' +
+      '<button class="secondary" onclick="closeAIModal()">إلغاء</button>' +
+      '</div>';
     showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
   } catch (e) {
     toast('خطأ: ' + e.message, 'error');
     closeAIModal();
   }
-}
-
-function applyContent(text) {
-  document.getElementById('story-content').value = text;
-  closeAIModal();
-  toast('تم التطبيق ✓', 'success');
 }
 
 // توليد قصة من فكرة
@@ -280,19 +279,30 @@ async function aiGenerateFromIdea() {
   showLoading('💡 جاري توليد القصة...');
   try {
     const data = await callAI({ action: 'generate_story', prompt: idea, category });
-    const html = `
-      <p style="color:#90a4ae;margin-bottom:10px">القصة المُولَّدة:</p>
-      <div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">${escapeHtml(data.text)}</div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button onclick="applyContent(\`${data.text.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">✓ استخدم هذه القصة</button>
-        <button class="secondary" onclick="closeAIModal()">إلغاء</button>
-      </div>
-    `;
+    pendingAIText = data.text;
+    const html = 
+      '<p style="color:#90a4ae;margin-bottom:10px">القصة المُولَّدة:</p>' +
+      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + 
+      escapeHtml(data.text) + 
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px">' +
+      '<button onclick="applyPendingText()">✓ استخدم هذه القصة</button>' +
+      '<button class="secondary" onclick="closeAIModal()">إلغاء</button>' +
+      '</div>';
     showAIModal('💡 قصة جديدة', html);
   } catch (e) {
     toast('خطأ: ' + e.message, 'error');
     closeAIModal();
   }
+}
+
+// تطبيق النص المقترح على حقل المحتوى
+function applyPendingText() {
+  if (!pendingAIText) return toast('لا يوجد نص للتطبيق', 'error');
+  document.getElementById('story-content').value = pendingAIText;
+  pendingAIText = '';
+  closeAIModal();
+  toast('تم التطبيق ✓', 'success');
 }
 
 // اقتراح تصنيف
