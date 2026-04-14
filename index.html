@@ -454,23 +454,66 @@ async function aiSuggestCategory() {
 }
 
 // توليد صورة
+// 🎨 توليد صورة مباشرة من المتصفح (بدون Netlify)
 async function aiGenerateImage() {
   const title = document.getElementById('story-title').value.trim();
   const content = document.getElementById('story-content').value.trim();
   if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
+  if (!ensureGeminiKey()) return toast('محتاج Gemini API Key', 'error');
   
-  showLoading('🎨 جاري توليد الصورة... (قد يستغرق 30 ثانية)');
+  showLoading('🎨 جاري توليد الصورة... (قد يستغرق 30-60 ثانية)');
   try {
-    const data = await callAI({ action: 'generate_image', title, content });
-    if (!data.image) throw new Error('لم يتم توليد صورة');
+    const category = document.getElementById('story-category').value;
+    const categoryMap = {
+      horror: "dark horror scary atmospheric haunting gothic",
+      drama: "emotional dramatic cinematic storytelling",
+      kids: "colorful cheerful cartoon children friendly illustration",
+      "sci-fi": "futuristic space science fiction technology cyberpunk",
+      thriller: "suspenseful mysterious tense dramatic noir",
+      islamic: "spiritual islamic arabic architecture mosque",
+      love: "romantic warm emotional heartfelt"
+    };
+    const styleHint = categoryMap[category] || "cinematic artistic detailed";
     
-    // تحويل base64 لـ blob ورفعه
-    const byteChars = atob(data.image);
-    const byteArray = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArray], { type: 'image/png' });
+    // الخطوة 1: Gemini يولد prompt إنجليزي دقيق
+    const translationPrompt = `You will receive an Arabic story. Create a detailed English image generation prompt (max 250 chars) that visualizes the MAIN scene or key moment.
+
+Requirements:
+- Focus on specific characters, setting, and key visual elements
+- Mood: ${styleHint}
+- Style: highly detailed digital illustration, cinematic lighting, professional book cover quality
+- NO text, NO words, NO letters in image
+- Be specific about what's happening, who is there, where
+
+Story title: "${title}"
+Story: ${content.substring(0, 1200)}
+
+Return ONLY the English prompt, nothing else.`;
+
+    let imagePrompt;
+    try {
+      const generated = await callGeminiDirect("gemini-2.5-flash", translationPrompt);
+      imagePrompt = generated.replace(/^["']|["']$/g, '').replace(/\n/g, ' ').trim();
+    } catch {
+      imagePrompt = `${styleHint} illustration, detailed cinematic artwork, professional book cover, no text`;
+    }
+    
+    console.log("[Image] Prompt:", imagePrompt);
+    
+    // الخطوة 2: Pollinations مباشرة من المتصفح (بلا timeout)
+    // seed عشوائي كل مرة عشان كل ضغطة تجيب صورة مختلفة
+    const seed = Math.floor(Math.random() * 999999);
+    const encodedPrompt = encodeURIComponent(imagePrompt);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=true`;
+    
+    // fetch مباشر من المتصفح - مفيش timeout
+    const imgRes = await fetch(pollinationsUrl);
+    if (!imgRes.ok) throw new Error(`فشل تحميل الصورة (${imgRes.status})`);
+    
+    const blob = await imgRes.blob();
     const file = new File([blob], `ai_${Date.now()}.png`, { type: 'image/png' });
     
+    // رفع على Supabase
     const imageUrl = await uploadImage(file);
     document.getElementById('current-image-url').value = imageUrl;
     const img = document.getElementById('preview');
