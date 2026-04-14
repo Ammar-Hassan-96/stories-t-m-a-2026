@@ -1,4 +1,7 @@
-// ✅ Netlify Function: FINAL AI IMAGE + TEXT SYSTEM
+// Netlify Function: Gemini AI Proxy - النسخة النهائية
+// ✅ تجنب Netlify 10s timeout
+// ✅ توليد صور ذكي مرتبط بمحتوى القصة
+// ✅ Fallback ذكي
 
 exports.handler = async (event) => {
   const headers = {
@@ -12,163 +15,213 @@ exports.handler = async (event) => {
 
   try {
     const { action, prompt, content, title, category } = JSON.parse(event.body);
+    const API_KEY = process.env.GEMINI_API_KEY;
 
-    const GEMINI_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_KEY) throw new Error("GEMINI_API_KEY missing");
-
-    // 🎯 IMAGE SYSTEM (NEW)
-    if (action === "generate_image") {
-      return await handleImageGeneration(GEMINI_KEY, title, content, category, headers);
+    if (!API_KEY) {
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
     }
 
-    // 🧠 TEXT SYSTEM
-    const promptMap = {
-      suggest_titles: `اقترح 3 عناوين جذابة:\n${content}`,
-      improve_content: `حسن النص بدون تغيير الأحداث:\n${content}`,
-      fix_grammar: `صحح الأخطاء فقط:\n${content}`,
-      suggest_category: `حدد تصنيف واحد فقط:\n${content}`
+    const MODEL_STRATEGY = {
+      suggest_titles: ["gemini-2.5-flash"],
+      suggest_category: ["gemini-2.5-flash"],
+      fix_grammar: ["gemini-2.5-flash"],
+      improve_content: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      expand_content: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      continue_expand: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      generate_story: ["gemini-2.5-flash", "gemini-3-flash-preview"],
     };
 
-    const finalPrompt = promptMap[action];
-    if (!finalPrompt) throw new Error("Invalid action");
+    let finalPrompt = "";
 
-    const result = await callGemini(GEMINI_KEY, "gemini-2.5-flash", finalPrompt);
+    switch (action) {
+      case "suggest_titles":
+        finalPrompt = `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
+        break;
+      case "improve_content":
+        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب، مع الحفاظ على جميع الأحداث والشخصيات. لا تقصّر القصة. اجعلها أكثر تشويقاً. أرجع القصة المُحسَّنة فقط:\n\n${content}`;
+        break;
+      case "expand_content":
+        finalPrompt = `وسّع القصة التالية لتصبح طويلة ومفصّلة (3000-4000 كلمة). أضف تفاصيل ووصف ومشاهد وحوارات، مع الحفاظ على الأحداث الأصلية. أرجع القصة الموسّعة فقط:\n\n${content}`;
+        break;
+      case "continue_expand":
+        finalPrompt = `أكمل توسيع القصة التالية بإضافة 2000-3000 كلمة جديدة. أضف مشاهد فرعية، حوارات، ووصف حسي. حافظ على نفس الأسلوب. أرجع القصة كاملة (الأصل + الإضافات):\n\n${content}`;
+        break;
+      case "fix_grammar":
+        finalPrompt = `صحّح الأخطاء الإملائية واللغوية في النص مع الحفاظ على الأسلوب. أرجع النص المُصحَّح فقط:\n\n${content}`;
+        break;
+      case "generate_story":
+        finalPrompt = `اكتب قصة طويلة ومفصّلة (3000-4000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة بأسلوب سردي جذاب. أرجع القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "أي تصنيف مناسب"}`;
+        break;
+      case "suggest_category":
+        finalPrompt = `اقرأ القصة وحدد أنسب تصنيف من: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط:\n\n${content}`;
+        break;
+      case "generate_image":
+        return await handleImageGeneration(API_KEY, title, content, category, headers);
+      default:
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
+    }
 
-    if (!result.success) throw new Error("AI failed");
+    const modelsToTry = MODEL_STRATEGY[action] || ["gemini-2.5-flash"];
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+      const result = await callGemini(API_KEY, model, finalPrompt);
+      if (result.success) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, text: result.text, image: null, model })
+        };
+      }
+      lastError = result.error;
+      if (!isRetryableError(result.error)) {
+        return { statusCode: 500, headers, body: JSON.stringify({ error: result.error }) };
+      }
+    }
 
     return {
-      statusCode: 200,
+      statusCode: 429,
       headers,
-      body: JSON.stringify({
-        success: true,
-        text: result.text
-      })
+      body: JSON.stringify({ error: "فشلت كل الموديلات. " + (lastError || "") })
     };
 
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: err.message })
-    };
+  } catch (error) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
   }
 };
 
+function isRetryableError(errorMsg) {
+  if (!errorMsg) return false;
+  const msg = errorMsg.toLowerCase();
+  return msg.includes("quota") || msg.includes("rate limit") || 
+         msg.includes("exhausted") || msg.includes("429") ||
+         msg.includes("exceeded") || msg.includes("not found") ||
+         msg.includes("not supported") || msg.includes("404") ||
+         msg.includes("not available") || msg.includes("deprecated") ||
+         msg.includes("timeout") || msg.includes("aborted");
+}
 
-
-// 🧠 GEMINI CALL
 async function callGemini(apiKey, model, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.8, maxOutputTokens: 4096 }
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8500);
+
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            maxOutputTokens: 800,
-            temperature: 0.7
-          }
-        })
-      }
-    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
 
-    const data = await res.json();
+    let data;
+    try { data = await response.json(); }
+    catch { return { success: false, error: `فشل قراءة الرد من ${model}` }; }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return { success: false };
+    if (!response.ok) {
+      return { success: false, error: data.error?.message || `HTTP ${response.status}` };
+    }
 
-    return { success: true, text };
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    let textResult = "";
+    for (const part of parts) if (part.text) textResult += part.text;
 
-  } catch {
-    return { success: false };
+    if (!textResult.trim()) {
+      const finishReason = data.candidates?.[0]?.finishReason || "UNKNOWN";
+      return { success: false, error: `رد فاضي من ${model}. السبب: ${finishReason}` };
+    }
+
+    return { success: true, text: textResult.trim() };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return { success: false, error: `timeout - ${model} أخد أكثر من 8 ثواني` };
+    }
+    return { success: false, error: err.message };
   }
 }
 
-
-
-// 🎨 FINAL IMAGE SYSTEM (AI MATCHED TO STORY)
+// 🎨 توليد صور ذكي ومرتبط بمحتوى القصة
 async function handleImageGeneration(apiKey, title, content, category, headers) {
   try {
+    const categoryMap = {
+      horror: "dark horror scary atmospheric haunting gothic",
+      drama: "emotional dramatic cinematic storytelling",
+      kids: "colorful cheerful cartoon children friendly illustration",
+      "sci-fi": "futuristic space science fiction technology cyberpunk",
+      thriller: "suspenseful mysterious tense dramatic noir",
+      islamic: "spiritual islamic arabic architecture mosque calligraphy",
+      love: "romantic warm emotional heartfelt"
+    };
+    const styleHint = categoryMap[category] || "cinematic artistic detailed";
 
-    // 🔥 STEP 1: استخراج مشهد حقيقي من القصة
-    const scenePrompt = `
-    Describe ONE realistic cinematic scene from this story.
+    // الخطوة 1: نطلب من Gemini prompt إنجليزي دقيق يصف القصة
+    const translationPrompt = `You will receive an Arabic story. Create a detailed English image generation prompt (max 250 chars) that visualizes the MAIN scene or key moment.
 
-    Include:
-    - character
-    - location
-    - action
-    - mood
+Requirements:
+- Focus on specific characters, setting, and key visual elements
+- Mood: ${styleHint}
+- Style: highly detailed digital illustration, cinematic lighting, professional book cover quality
+- NO text, NO words, NO letters in image
+- Be specific about what's happening, who is there, where
 
-    Max 20 words.
+Story title: "${title}"
+Story: ${content.substring(0, 1200)}
 
-    Title: ${title}
-    Story: ${content.substring(0, 1200)}
-    `;
+Return ONLY the English prompt, nothing else.`;
 
-    const sceneRes = await callGemini(apiKey, "gemini-2.5-flash", scenePrompt);
+    const promptGenResult = await callGemini(apiKey, "gemini-2.5-flash", translationPrompt);
 
-    let scene = sceneRes.success
-      ? sceneRes.text.replace(/\n/g, "").trim()
-      : "cinematic dramatic scene";
-
-    console.log("Scene:", scene);
-
-    // 🎨 STEP 2: توليد الصورة بـ Flux
-    const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(scene)}?width=1024&height=768&model=flux&enhance=true`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const response = await fetch(fluxUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      if (!response.ok) throw new Error("Flux failed");
-
-      const buffer = await response.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          scene,
-          image: base64,
-          source: "flux-ai"
-        })
-      };
-
-    } catch (fluxErr) {
-      clearTimeout(timeout);
-
-      console.log("Flux failed → fallback");
-
-      // 🔄 fallback صورة بسيطة
-      const fallbackUrl = `https://image.pollinations.ai/prompt/cinematic%20scene`;
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          scene,
-          image_url: fallbackUrl,
-          fallback: true
-        })
-      };
+    let imagePrompt;
+    if (promptGenResult.success && promptGenResult.text.length > 20) {
+      imagePrompt = promptGenResult.text
+        .replace(/^["']|["']$/g, '')
+        .replace(/\n/g, ' ')
+        .trim();
+    } else {
+      imagePrompt = `${styleHint} illustration, detailed cinematic artwork, professional book cover, no text`;
     }
 
+    console.log("[Image] Prompt:", imagePrompt.substring(0, 150));
+
+    // الخطوة 2: seed ثابت من العنوان لضمان نفس الصور مع نفس العنوان
+    const seed = Math.abs(title.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0)) & 0x7FFFFFFF;
+    const encodedPrompt = encodeURIComponent(imagePrompt);
+    // استخدام flux model - أحدث وأدق من Pollinations
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=true`;
+
+    const imgController = new AbortController();
+    const imgTimeout = setTimeout(() => imgController.abort(), 8000);
+
+    try {
+      const imgRes = await fetch(pollinationsUrl, { signal: imgController.signal });
+      clearTimeout(imgTimeout);
+      if (!imgRes.ok) throw new Error(`Pollinations: ${imgRes.status}`);
+
+      const imgBuffer = await imgRes.arrayBuffer();
+      const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          text: imagePrompt,
+          image: imgBase64,
+          model: "pollinations/flux"
+        })
+      };
+    } catch (imgErr) {
+      clearTimeout(imgTimeout);
+      throw imgErr;
+    }
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: "Image system failed: " + err.message
-      })
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message }) };
   }
 }
