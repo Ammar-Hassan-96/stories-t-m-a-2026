@@ -1,5 +1,4 @@
-// Netlify Function: Gemini AI Proxy
-// يخفي الـ API Key ويتعامل مع Gemini بأمان
+// Netlify Function: Gemini AI Proxy (PRO VERSION)
 
 exports.handler = async (event) => {
   const headers = {
@@ -17,43 +16,71 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { action, prompt, content, title, category } = JSON.parse(event.body);
+    const { action, prompt, content, title, category, part = 1 } = JSON.parse(event.body);
     const API_KEY = process.env.GEMINI_API_KEY;
 
     if (!API_KEY) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ" }) };
     }
 
-    // بناء الـ prompt حسب الـ action
     let finalPrompt = "";
     let useImageModel = false;
 
     switch (action) {
+
       case "suggest_titles":
-        finalPrompt = `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
+        finalPrompt = `اقرأ القصة التالية واقترح 5 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 10 كلمات). أرجع فقط العناوين بدون شرح:\n\n${content}`;
         break;
 
       case "improve_content":
-        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب وممتع، مع الحفاظ على جميع الأحداث والشخصيات والتفاصيل. لا تقصّر القصة أبداً، بل حافظ على طولها الأصلي أو زده. اجعلها أكثر تشويقاً وحيوية بإضافة وصف أدق ومشاعر أعمق. أرجع القصة المُحسَّنة كاملةً فقط:\n\n${content}`;
+        finalPrompt = `أعد كتابة القصة التالية بأسلوب أدبي أقوى وأكثر تشويقًا، بدون تقصير، بل مع إضافة وصف ومشاعر أعمق:\n\n${content}`;
+        break;
 
       case "expand_content":
-        finalPrompt = `وسّع القصة التالية لتصبح قصة طويلة ومفصّلة بين 3000 و 5000 كلمة. أضف الكثير من التفاصيل والوصف الدقيق للأماكن والشخصيات والمشاعر والحوارات والمشاهد، مع الحفاظ على الأحداث الأصلية وتطويرها. اجعل القصة غنية بالتفاصيل الحسية والحوارات الداخلية للشخصيات. اكتب بأسلوب أدبي جذاب ومتدفق. أرجع القصة الموسّعة كاملةً فقط، بدون أي مقدمات أو تعليقات:\n\n${content}`;
+        finalPrompt = `وسّع القصة التالية لتصبح قصة طويلة جداً (4000+ كلمة).
 
-      case "fix_grammar":
-        finalPrompt = `صحّح الأخطاء الإملائية واللغوية في النص التالي مع الحفاظ على الأسلوب واللهجة الأصلية. أرجع النص المُصحَّح فقط بدون أي تعليقات:\n\n${content}`;
+مهم جداً:
+- لا تختصر
+- لا تتوقف فجأة
+- لو لم تكمل، استمر وكأنك ستكمل في جزء آخر
+
+أضف:
+- حوارات كثيرة
+- وصف تفصيلي
+- مشاعر داخلية
+
+${content}`;
         break;
 
       case "generate_story":
-        finalPrompt = `اكتب قصة طويلة ومفصّلة (بين 3000 و 5000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة ومؤثرة، بأسلوب سردي جذاب مع وصف دقيق للشخصيات والأماكن والأحداث والحوارات. استخدم تقنيات الأدب الحديث من توتر وذروة وحبكة متصاعدة. أرجع القصة كاملةً فقط:\n\nالفكرة: ${prompt}\nالتصنيف المطلوب: ${category || "أي تصنيف مناسب"}`;
+        finalPrompt = `اكتب قصة احترافية طويلة جداً (4000+ كلمة)
+
+Part ${part}:
+
+${part === 1 
+? `ابدأ القصة من البداية مع تقديم قوي وشخصيات واضحة وتصاعد درامي.`
+: `اكمل القصة من حيث انتهى الجزء السابق بدون إعادة.`}
+
+الفكرة: ${prompt}
+التصنيف: ${category || "general"}
+
+مهم:
+- لا تختصر
+- اكتب بتفصيل عالي
+- اجعل النهاية مفتوحة لو هذا ليس الجزء الأخير
+`;
+        break;
+
+      case "fix_grammar":
+        finalPrompt = `صحح الأخطاء فقط بدون تغيير الأسلوب:\n\n${content}`;
+        break;
 
       case "suggest_category":
-        finalPrompt = `اقرأ القصة التالية وحدد أنسب تصنيف لها من القائمة التالية فقط: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط (الـ ID بالإنجليزية) بدون أي شرح:\n\n${content}`;
+        finalPrompt = `حدد تصنيف واحد فقط من: drama, horror, kids, sci-fi, thriller, islamic, love\n\n${content}`;
         break;
 
       case "generate_image":
-        // استخدام Pollinations.ai - مجاني بالكامل
         try {
-          // توليد prompt ذكي بـ Gemini الأول (مجاني)
           const promptResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
             {
@@ -62,41 +89,38 @@ exports.handler = async (event) => {
               body: JSON.stringify({
                 contents: [{
                   parts: [{
-                    text: `Create a detailed English image generation prompt (max 200 characters) for an illustration of an Arabic story. Story title: "${title}". Story excerpt: ${content.substring(0, 400)}. The prompt should describe the scene, mood, and art style (cinematic, detailed). Return only the prompt, no explanations.`
+                    text: `Create short cinematic image prompt for: "${title}" based on: ${content.substring(0, 300)}`
                   }]
                 }],
                 generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
               })
             }
           );
+
           const promptData = await promptResponse.json();
-          const imagePrompt = promptData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 
-            `Beautiful artistic illustration for story "${title}"`;
-          
-          // جلب الصورة من Pollinations (مجاني)
+          const imagePrompt = promptData.candidates?.[0]?.content?.parts?.[0]?.text || title;
+
           const encodedPrompt = encodeURIComponent(imagePrompt);
-          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
-          
-          const imgRes = await fetch(pollinationsUrl);
-          if (!imgRes.ok) throw new Error("فشل توليد الصورة");
-          
-          const imgBuffer = await imgRes.arrayBuffer();
-          const imgBase64 = Buffer.from(imgBuffer).toString('base64');
-          
+          const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&seed=${Date.now()}`;
+
+          const imgRes = await fetch(url);
+          const buffer = await imgRes.arrayBuffer();
+
           return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
               success: true,
-              text: imagePrompt,
-              image: imgBase64
+              image: Buffer.from(buffer).toString("base64"),
+              text: imagePrompt
             })
           };
+
         } catch (err) {
           return {
             statusCode: 500,
             headers,
-            body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message })
+            body: JSON.stringify({ error: err.message })
           };
         }
 
@@ -104,18 +128,14 @@ exports.handler = async (event) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
     }
 
-    // استدعاء Gemini API
-    const model = useImageModel 
-      ? "gemini-2.5-flash-image"   // Nano Banana
-      : "gemini-2.5-flash";
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
     const body = {
       contents: [{ parts: [{ text: finalPrompt }] }],
-      generationConfig: useImageModel 
-        ? { responseModalities: ["IMAGE", "TEXT"] }
-        : { temperature: 0.8, maxOutputTokens: 8192 }
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 16000
+      }
     };
 
     const response = await fetch(url, {
@@ -127,17 +147,19 @@ exports.handler = async (event) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return { statusCode: response.status, headers, body: JSON.stringify({ error: data.error?.message || "خطأ من Gemini" }) };
+      throw new Error(data.error?.message || "Gemini Error");
     }
 
-    // معالجة الرد
     const parts = data.candidates?.[0]?.content?.parts || [];
     let textResult = "";
-    let imageBase64 = null;
 
-    for (const part of parts) {
-      if (part.text) textResult += part.text;
-      if (part.inlineData?.data) imageBase64 = part.inlineData.data;
+    parts.forEach(p => {
+      if (p.text) textResult += p.text;
+    });
+
+    // 🔥 fallback لو الرد قصير
+    if (textResult.length < 500 && action.includes("story")) {
+      textResult += "\n\n(ملحوظة: يمكن طلب الجزء التالي لإكمال القصة)";
     }
 
     return {
@@ -146,7 +168,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         success: true,
         text: textResult.trim(),
-        image: imageBase64
+        nextPart: part + 1
       })
     };
 
