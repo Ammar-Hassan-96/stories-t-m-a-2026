@@ -460,62 +460,39 @@ async function aiSuggestCategory() {
 async function aiGenerateImage() {
   const title = document.getElementById('story-title').value.trim();
   const content = document.getElementById('story-content').value.trim();
+  const category = document.getElementById('story-category').value;
+
   if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
-  if (!ensureGeminiKey()) return toast('محتاج Gemini API Key', 'error');
   
-  showLoading('🎨 جاري توليد الصورة... (قد يستغرق 30-60 ثانية)');
+  showLoading('🎨 جاري تحليل القصة وتوليد مشهد سينمائي... (قد يستغرق 20 ثانية)');
+  
   try {
-    const category = document.getElementById('story-category').value;
-    const categoryMap = {
-      horror: "dark horror scary atmospheric haunting gothic",
-      drama: "emotional dramatic cinematic storytelling",
-      kids: "colorful cheerful cartoon children friendly illustration",
-      "sci-fi": "futuristic space science fiction technology cyberpunk",
-      thriller: "suspenseful mysterious tense dramatic noir",
-      islamic: "spiritual islamic arabic architecture mosque",
-      love: "romantic warm emotional heartfelt"
-    };
-    const styleHint = categoryMap[category] || "cinematic artistic detailed";
-    
-    // الخطوة 1: Gemini يولد prompt إنجليزي دقيق
-    const translationPrompt = `You will receive an Arabic story. Create a detailed English image generation prompt (max 250 chars) that visualizes the MAIN scene or key moment.
+    // إرسال الطلب لـ Netlify Function بدلاً من التوليد المحلي الضعيف
+    const res = await fetch(AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        action: 'generate_image', 
+        title, 
+        content, 
+        category 
+      })
+    });
 
-Requirements:
-- Focus on specific characters, setting, and key visual elements
-- Mood: ${styleHint}
-- Style: highly detailed digital illustration, cinematic lighting, professional book cover quality
-- NO text, NO words, NO letters in image
-- Be specific about what's happening, who is there, where
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "فشل توليد الصورة");
 
-Story title: "${title}"
-Story: ${content.substring(0, 1200)}
-
-Return ONLY the English prompt, nothing else.`;
-
-    let imagePrompt;
-    try {
-      const generated = await callGeminiDirect("gemini-2.5-flash", translationPrompt);
-      imagePrompt = generated.replace(/^["']|["']$/g, '').replace(/\n/g, ' ').trim();
-    } catch {
-      imagePrompt = `${styleHint} illustration, detailed cinematic artwork, professional book cover, no text`;
+    // تحويل الـ base64 القادم من السيرفر إلى ملف لرفعه على Supabase
+    const byteCharacters = atob(data.image);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-    
-    console.log("[Image] Prompt:", imagePrompt);
-    
-    // الخطوة 2: Pollinations مباشرة من المتصفح (بلا timeout)
-    // seed عشوائي كل مرة عشان كل ضغطة تجيب صورة مختلفة
-    const seed = Math.floor(Math.random() * 999999);
-    const encodedPrompt = encodeURIComponent(imagePrompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=true`;
-    
-    // fetch مباشر من المتصفح - مفيش timeout
-    const imgRes = await fetch(pollinationsUrl);
-    if (!imgRes.ok) throw new Error(`فشل تحميل الصورة (${imgRes.status})`);
-    
-    const blob = await imgRes.blob();
-    const file = new File([blob], `ai_${Date.now()}.png`, { type: 'image/png' });
-    
-    // رفع على Supabase
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], {type: 'image/png'});
+    const file = new File([blob], `ai_cinematic_${Date.now()}.png`, { type: 'image/png' });
+
+    // رفع على Supabase كالمعتاد
     const imageUrl = await uploadImage(file);
     document.getElementById('current-image-url').value = imageUrl;
     const img = document.getElementById('preview');
@@ -523,13 +500,13 @@ Return ONLY the English prompt, nothing else.`;
     img.style.display = 'block';
     
     closeAIModal();
-    toast('✓ تم توليد الصورة ورفعها', 'success');
+    toast('✓ تم توليد صورة سينمائية تعبر عن روح القصة', 'success');
   } catch (e) {
-    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+    console.error(e);
+    toast(e.message || 'حصل خطأ في التوليد', 'error');
     closeAIModal();
   }
 }
-
 let supabase_stored = null;
 let sb = null;
 let stories = [];
