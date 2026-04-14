@@ -64,7 +64,7 @@ exports.handler = async (event) => {
 
     // استدعاء Gemini API
     const model = useImageModel 
-      ? "gemini-2.5-flash-image-preview"   // Nano Banana
+      ? "gemini-2.5-flash-image"   // Nano Banana
       : "gemini-2.5-flash";
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
