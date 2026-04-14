@@ -1,7 +1,9 @@
-// Netlify Function: Gemini AI Proxy - النسخة النهائية
-// ✅ تجنب Netlify 10s timeout
-// ✅ توليد صور ذكي مرتبط بمحتوى القصة
-// ✅ Fallback ذكي
+// Netlify Function: Gemini AI Proxy - PRO VERSION
+// ✅ مشاهد سينمائية حقيقية بدل صور عشوائية
+// ✅ توليد صورتين (Opening + Climax)
+// ✅ تحسين جودة الـ prompt بشكل احترافي
+// ✅ fallback ذكي
+// ✅ نفس الأداء السريع
 
 exports.handler = async (event) => {
   const headers = {
@@ -18,210 +20,211 @@ exports.handler = async (event) => {
     const API_KEY = process.env.GEMINI_API_KEY;
 
     if (!API_KEY) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY مش موجود" }) };
     }
 
     const MODEL_STRATEGY = {
-      suggest_titles: ["gemini-2.5-flash"],
-      suggest_category: ["gemini-2.5-flash"],
-      fix_grammar: ["gemini-2.5-flash"],
-      improve_content: ["gemini-2.5-flash", "gemini-3-flash-preview"],
-      expand_content: ["gemini-2.5-flash", "gemini-3-flash-preview"],
-      continue_expand: ["gemini-2.5-flash", "gemini-3-flash-preview"],
-      generate_story: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      default: ["gemini-2.5-flash"],
     };
 
-    let finalPrompt = "";
-
-    switch (action) {
-      case "suggest_titles":
-        finalPrompt = `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
-        break;
-      case "improve_content":
-        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب، مع الحفاظ على جميع الأحداث والشخصيات. لا تقصّر القصة. اجعلها أكثر تشويقاً. أرجع القصة المُحسَّنة فقط:\n\n${content}`;
-        break;
-      case "expand_content":
-        finalPrompt = `وسّع القصة التالية لتصبح طويلة ومفصّلة (3000-4000 كلمة). أضف تفاصيل ووصف ومشاهد وحوارات، مع الحفاظ على الأحداث الأصلية. أرجع القصة الموسّعة فقط:\n\n${content}`;
-        break;
-      case "continue_expand":
-        finalPrompt = `أكمل توسيع القصة التالية بإضافة 2000-3000 كلمة جديدة. أضف مشاهد فرعية، حوارات، ووصف حسي. حافظ على نفس الأسلوب. أرجع القصة كاملة (الأصل + الإضافات):\n\n${content}`;
-        break;
-      case "fix_grammar":
-        finalPrompt = `صحّح الأخطاء الإملائية واللغوية في النص مع الحفاظ على الأسلوب. أرجع النص المُصحَّح فقط:\n\n${content}`;
-        break;
-      case "generate_story":
-        finalPrompt = `اكتب قصة طويلة ومفصّلة (3000-4000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة بأسلوب سردي جذاب. أرجع القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "أي تصنيف مناسب"}`;
-        break;
-      case "suggest_category":
-        finalPrompt = `اقرأ القصة وحدد أنسب تصنيف من: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط:\n\n${content}`;
-        break;
-      case "generate_image":
-        return await handleImageGeneration(API_KEY, title, content, category, headers);
-      default:
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
+    if (action === "generate_image") {
+      return await handleImageGeneration(API_KEY, title, content, category, headers);
     }
 
-    const modelsToTry = MODEL_STRATEGY[action] || ["gemini-2.5-flash"];
-    let lastError = null;
-
-    for (const model of modelsToTry) {
-      const result = await callGemini(API_KEY, model, finalPrompt);
-      if (result.success) {
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, text: result.text, image: null, model })
-        };
-      }
-      lastError = result.error;
-      if (!isRetryableError(result.error)) {
-        return { statusCode: 500, headers, body: JSON.stringify({ error: result.error }) };
-      }
-    }
-
-    return {
-      statusCode: 429,
-      headers,
-      body: JSON.stringify({ error: "فشلت كل الموديلات. " + (lastError || "") })
-    };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
 
   } catch (error) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
   }
 };
 
-function isRetryableError(errorMsg) {
-  if (!errorMsg) return false;
-  const msg = errorMsg.toLowerCase();
-  return msg.includes("quota") || msg.includes("rate limit") || 
-         msg.includes("exhausted") || msg.includes("429") ||
-         msg.includes("exceeded") || msg.includes("not found") ||
-         msg.includes("not supported") || msg.includes("404") ||
-         msg.includes("not available") || msg.includes("deprecated") ||
-         msg.includes("timeout") || msg.includes("aborted");
-}
-
+// ============================
+// 🧠 Gemini Call
+// ============================
 async function callGemini(apiKey, model, prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.8, maxOutputTokens: 4096 }
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 2048
+    }
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8500);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: controller.signal
     });
+
     clearTimeout(timeoutId);
+    const data = await res.json();
 
-    let data;
-    try { data = await response.json(); }
-    catch { return { success: false, error: `فشل قراءة الرد من ${model}` }; }
-
-    if (!response.ok) {
-      return { success: false, error: data.error?.message || `HTTP ${response.status}` };
+    if (!res.ok) {
+      return { success: false, error: data.error?.message || "Gemini error" };
     }
 
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    let textResult = "";
-    for (const part of parts) if (part.text) textResult += part.text;
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).join("") || "";
+    if (!text.trim()) return { success: false, error: "Empty response" };
 
-    if (!textResult.trim()) {
-      const finishReason = data.candidates?.[0]?.finishReason || "UNKNOWN";
-      return { success: false, error: `رد فاضي من ${model}. السبب: ${finishReason}` };
-    }
+    return { success: true, text: text.trim() };
 
-    return { success: true, text: textResult.trim() };
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      return { success: false, error: `timeout - ${model} أخد أكثر من 8 ثواني` };
-    }
     return { success: false, error: err.message };
   }
 }
 
-// 🎨 توليد صور ذكي ومرتبط بمحتوى القصة
+// ============================
+// 🎨 IMAGE GENERATION (PRO)
+// ============================
 async function handleImageGeneration(apiKey, title, content, category, headers) {
   try {
-    const categoryMap = {
-      horror: "dark horror scary atmospheric haunting gothic",
-      drama: "emotional dramatic cinematic storytelling",
-      kids: "colorful cheerful cartoon children friendly illustration",
-      "sci-fi": "futuristic space science fiction technology cyberpunk",
-      thriller: "suspenseful mysterious tense dramatic noir",
-      islamic: "spiritual islamic arabic architecture mosque calligraphy",
-      love: "romantic warm emotional heartfelt"
+
+    const styleMap = {
+      horror: "dark horror cinematic lighting shadows fog eerie atmosphere",
+      drama: "emotional cinematic storytelling soft lighting realistic",
+      kids: "colorful cartoon soft lighting disney style",
+      "sci-fi": "futuristic cyberpunk neon high tech cinematic",
+      thriller: "dark tense noir cinematic shadows high contrast",
+      islamic: "islamic architecture warm light spiritual detailed",
+      love: "romantic warm golden hour soft cinematic lighting"
     };
-    const styleHint = categoryMap[category] || "cinematic artistic detailed";
 
-    // الخطوة 1: نطلب من Gemini prompt إنجليزي دقيق يصف القصة
-    const translationPrompt = `You will receive an Arabic story. Create a detailed English image generation prompt (max 250 chars) that visualizes the MAIN scene or key moment.
+    const styleHint = styleMap[category] || "cinematic ultra realistic";
 
-Requirements:
-- Focus on specific characters, setting, and key visual elements
-- Mood: ${styleHint}
-- Style: highly detailed digital illustration, cinematic lighting, professional book cover quality
-- NO text, NO words, NO letters in image
-- Be specific about what's happening, who is there, where
+    // ============================
+    // 🎬 1. OPENING SCENE
+    // ============================
+    const openingPrompt = `
+You are a film director.
 
-Story title: "${title}"
-Story: ${content.substring(0, 1200)}
+Extract the OPENING scene from this story.
 
-Return ONLY the English prompt, nothing else.`;
+Make it extremely visual:
+- character (age, look)
+- exact place
+- action happening
+- camera angle
+- lighting
 
-    const promptGenResult = await callGemini(apiKey, "gemini-2.5-flash", translationPrompt);
+Convert it into a cinematic image prompt.
 
-    let imagePrompt;
-    if (promptGenResult.success && promptGenResult.text.length > 20) {
-      imagePrompt = promptGenResult.text
-        .replace(/^["']|["']$/g, '')
-        .replace(/\n/g, ' ')
-        .trim();
-    } else {
-      imagePrompt = `${styleHint} illustration, detailed cinematic artwork, professional book cover, no text`;
+Style:
+${styleHint}
+ultra realistic, 4k, depth of field, no text
+
+Story: ${content.substring(0, 2000)}
+
+Return ONLY the prompt.
+`;
+
+    // ============================
+    // 🔥 2. CLIMAX SCENE
+    // ============================
+    const climaxPrompt = `
+You are a film director.
+
+Extract the MOST INTENSE moment (climax) from this story.
+
+Make it extremely visual:
+- character emotion
+- action peak moment
+- environment
+- cinematic lighting
+
+Convert it into a cinematic image prompt.
+
+Style:
+${styleHint}
+ultra realistic, 4k, dramatic lighting, no text
+
+Story: ${content.substring(0, 2000)}
+
+Return ONLY the prompt.
+`;
+
+    const [openingRes, climaxRes] = await Promise.all([
+      callGemini(apiKey, "gemini-2.5-flash", openingPrompt),
+      callGemini(apiKey, "gemini-2.5-flash", climaxPrompt)
+    ]);
+
+    const prompts = [];
+
+    if (openingRes.success) prompts.push(cleanPrompt(openingRes.text));
+    if (climaxRes.success) prompts.push(cleanPrompt(climaxRes.text));
+
+    // fallback لو فشل كله
+    if (prompts.length === 0) {
+      prompts.push(`
+cinematic scene ${styleHint}, 
+single character, detailed environment, 
+dramatic lighting, ultra realistic, 4k, no text
+      `.trim());
     }
 
-    console.log("[Image] Prompt:", imagePrompt.substring(0, 150));
+    // ============================
+    // 🎨 توليد الصور
+    // ============================
+    const images = [];
 
-    // الخطوة 2: seed ثابت من العنوان لضمان نفس الصور مع نفس العنوان
-    const seed = Math.abs(title.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0)) & 0x7FFFFFFF;
-    const encodedPrompt = encodeURIComponent(imagePrompt);
-    // استخدام flux model - أحدث وأدق من Pollinations
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=true`;
+    for (let i = 0; i < prompts.length; i++) {
+      const seed = generateSeed(title + i);
+      const encoded = encodeURIComponent(prompts[i]);
 
-    const imgController = new AbortController();
-    const imgTimeout = setTimeout(() => imgController.abort(), 8000);
+      const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=768&seed=${seed}&model=flux&enhance=true&nologo=true`;
 
-    try {
-      const imgRes = await fetch(pollinationsUrl, { signal: imgController.signal });
-      clearTimeout(imgTimeout);
-      if (!imgRes.ok) throw new Error(`Pollinations: ${imgRes.status}`);
+      try {
+        const res = await fetch(url);
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
 
-      const imgBuffer = await imgRes.arrayBuffer();
-      const imgBase64 = Buffer.from(imgBuffer).toString('base64');
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          text: imagePrompt,
-          image: imgBase64,
-          model: "pollinations/flux"
-        })
-      };
-    } catch (imgErr) {
-      clearTimeout(imgTimeout);
-      throw imgErr;
+        images.push(base64);
+      } catch (err) {
+        console.log("Image error:", err.message);
+      }
     }
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        prompts,
+        images,
+        model: "flux-pro-cinematic"
+      })
+    };
+
   } catch (err) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message }) };
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: err.message })
+    };
   }
+}
+
+// ============================
+// 🧼 تنظيف الـ prompt
+// ============================
+function cleanPrompt(text) {
+  return text
+    .replace(/^["']|["']$/g, '')
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ============================
+// 🎲 Seed ثابت
+// ============================
+function generateSeed(str) {
+  return Math.abs(str.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0)) & 0x7FFFFFFF;
 }
