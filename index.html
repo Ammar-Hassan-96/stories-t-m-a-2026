@@ -226,7 +226,9 @@ function isRetryable(msg) {
   return m.includes("quota") || m.includes("rate limit") || m.includes("exhausted") ||
          m.includes("429") || m.includes("exceeded") || m.includes("not found") ||
          m.includes("not supported") || m.includes("404") || m.includes("deprecated") ||
-         m.includes("not available");
+         m.includes("not available") || m.includes("high demand") ||
+         m.includes("unavailable") || m.includes("503") || m.includes("overloaded") ||
+         m.includes("try again") || m.includes("spikes in demand");
 }
 
 // 💾 طلب الـ API Key من المستخدم لو مش موجود
