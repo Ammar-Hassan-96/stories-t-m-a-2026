@@ -24,6 +24,11 @@ exports.handler = async (event) => {
       return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
     }
 
+    // تحذير لو القصة ضخمة جداً (قد تسبب timeout)
+    if (content && content.length > 30000) {
+      console.log(`[Warning] Large content: ${content.length} chars`);
+    }
+
     // 🎯 استراتيجية الموديلات حسب المهمة
     // كل قيمة = مصفوفة موديلات بترتيب الأفضل → الأقل (fallback تلقائي)
     const MODEL_STRATEGY = {
@@ -32,14 +37,14 @@ exports.handler = async (event) => {
       suggest_category: ["gemini-2.5-flash"],
       fix_grammar: ["gemini-2.5-flash"],
       
-      // مهام متوسطة: جودة أعلى مع fallback
-      improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
+      // مهام متوسطة: Flash أولاً (سريع ومضمون)، ثم Pro لو عايز جودة أعلى
+      improve_content: ["gemini-2.5-flash", "gemini-2.5-pro"],
       
-      // مهام إبداعية عالية: أقوى جودة مع fallback متعدد
-      // ملاحظة: gemini-3-pro-preview اتشال في مارس 2026، استبدلناه بـ 3.1-pro-preview
-      expand_content: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
-      continue_expand: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
-      generate_story: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      // ⚠️ مهم: للتطويل نستخدم Flash كأولوية لتجنب Netlify timeout (10s)
+      // الموديلات البطيئة (3.1 Pro) بتسبب 502 Bad Gateway في الخطة المجانية
+      expand_content: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      continue_expand: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      generate_story: ["gemini-2.5-flash", "gemini-3-flash-preview"],
     };
 
     // بناء الـ prompt حسب الـ action
@@ -172,7 +177,7 @@ function isQuotaError(errorMsg) {
   return isRetryableError(errorMsg);
 }
 
-// 📞 استدعاء Gemini API
+// 📞 استدعاء Gemini API مع timeout
 async function callGemini(apiKey, model, prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   
@@ -180,32 +185,72 @@ async function callGemini(apiKey, model, prompt) {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.8,
-      maxOutputTokens: 8192
+      maxOutputTokens: 6144 // 6K tokens ≈ 3000-4000 كلمة عربي، يحصل خلال 5-7 ثواني
     }
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  // timeout بعد 8 ثواني (Netlify free tier حده 10 ثواني)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-  const data = await response.json();
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    return { 
-      success: false, 
-      error: data.error?.message || `HTTP ${response.status}` 
-    };
+    clearTimeout(timeoutId);
+
+    // محاولة قراءة الـ response
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseErr) {
+      return { 
+        success: false, 
+        error: `فشل قراءة الرد من ${model}: ${parseErr.message}` 
+      };
+    }
+
+    if (!response.ok) {
+      const errMsg = data.error?.message || `HTTP ${response.status}`;
+      console.log(`[${model}] Error: ${errMsg}`);
+      return { 
+        success: false, 
+        error: errMsg
+      };
+    }
+
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    let textResult = "";
+    for (const part of parts) {
+      if (part.text) textResult += part.text;
+    }
+
+    // لو الرد فاضي
+    if (!textResult.trim()) {
+      const finishReason = data.candidates?.[0]?.finishReason || "UNKNOWN";
+      return { 
+        success: false, 
+        error: `رد فاضي من ${model}. السبب: ${finishReason}. قد تكون القصة طويلة جداً.` 
+      };
+    }
+
+    console.log(`[${model}] Success: ${textResult.length} chars`);
+    return { success: true, text: textResult.trim() };
+
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return { 
+        success: false, 
+        error: `timeout - ${model} أخد أكثر من 25 ثانية. القصة طويلة جداً.` 
+      };
+    }
+    return { success: false, error: err.message };
   }
-
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  let textResult = "";
-  for (const part of parts) {
-    if (part.text) textResult += part.text;
-  }
-
-  return { success: true, text: textResult.trim() };
 }
 
 // 🎨 توليد الصور عبر Pollinations (مجاني)
