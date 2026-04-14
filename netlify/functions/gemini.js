@@ -77,32 +77,28 @@ async function callGemini(apiKey, model, prompt, timeoutMs) {
 }
 
 async function handleImageGeneration(apiKey, title, content, category, headers) {
-  // برومبت "المخرج الفني" - يركز على العمق النفسي والرمزي للقصة
-  const directorPrompt = `You are a world-class Film Director and Concept Artist. 
-  Analyze the soul, emotions, and hidden themes of this Arabic story: "${title}".
-  Story Context: ${content.substring(0, 1200)}
+  // برومبت المخرج المحترف - يركز على تحويل النص لمشهد بصري ملموس
+  const directorPrompt = `You are a visionary Concept Artist for high-end cinema. 
+  Story Title: "${title}"
+  Full Story Context: ${content.substring(0, 1500)}
 
-  Task: Create a highly evocative, symbolic, and cinematic image prompt in English.
+  Task: Extract the most powerful visual scene from this Arabic story and describe it for image generation.
   
-  Focus on:
-  1. The "Soul": What is the core emotion? (Loneliness, terror, hope, ancient wisdom).
-  2. The "Atmosphere": Don't just say 'light', describe it (e.g., 'dust motes dancing in a single shaft of moonlight').
-  3. The "Visual Anchor": One specific, highly detailed object or person from the story.
-  4. Technical Excellence: 35mm film grain, moody lighting, shot on IMAX, hyper-realistic textures.
-
-  STRICT: NO text, NO words, NO flat colors. Make it look like a masterpiece movie poster.
-  Return ONLY the English prompt.`;
-
-  const promptResult = await callGemini(apiKey, "gemini-2.0-flash", directorPrompt, 4000);
+  Guidelines:
+  1. Main Subject: Describe the protagonist or key object with intense detail (clothing, expression, texture).
+  2. Setting: Describe the environment based on the story (ancient ruins, futuristic city, misty forest).
+  3. Lighting & Mood: Use dramatic lighting (e.g., chiaroscuro, volumetric fog, ethereal glow).
+  4. Symbolic Detail: Include one unique item or element mentioned in the story to make it authentic.
   
-  // إضافة لمسات احترافية إضافية للـ Prompt لضمان الواقعية القصوى
-  const cinematicEnhancers = "masterpiece, depth of field, sharp focus, incredible textures, highly emotive, 8k resolution, cinematic color grading.";
-  const finalImagePrompt = promptResult.success 
-    ? `${promptResult.text}. ${cinematicEnhancers}`
-    : `A profound, cinematic, and hyper-realistic scene representing the essence of ${title}. ${cinematicEnhancers}`;
+  Style: Hyper-realistic cinematic masterpiece, shot on 70mm lens, IMAX quality, extremely detailed textures, photorealistic.
+  STRICT: No text or typography. No cartoonish vibes.
+  Return ONLY the English prompt text.`;
+
+  const promptResult = await callGemini(apiKey, "gemini-2.0-flash", directorPrompt, 5000);
+  const finalImagePrompt = promptResult.success ? promptResult.text : `Cinematic photorealistic masterpiece of ${title}`;
 
   const seed = Math.floor(Math.random() * 9999999);
-  // ملاحظة: قمنا بتغيير الموديل إلى flux-realism لضمان لمسة بشرية وليست بلاستيكية
+  // استخدام نموذج Flux مع تفعيل الـ Enhance لضمان دقة التفاصيل
   const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalImagePrompt)}?width=1280&height=720&model=flux&seed=${seed}&nologo=true&enhance=true`;
 
   try {
@@ -117,10 +113,10 @@ async function handleImageGeneration(apiKey, title, content, category, headers) 
         success: true,
         text: finalImagePrompt,
         image: base64,
-        model: "Flux.Soul-Engine-v2"
+        model: "Flux-Visionary-v3"
       })
     };
   } catch (e) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "Image Gen Failed" }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "Image Gen Failed: " + e.message }) };
   }
 }
