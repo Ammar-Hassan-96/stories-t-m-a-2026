@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة تحكم القصص</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  body { background: #0a1929; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { color: #d4af37; margin-bottom: 20px; text-align: center; }
+  .card { background: #132f4c; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .login-card { max-width: 400px; margin: 100px auto; }
+  input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #1e4976; background: #0a1929; color: #fff; font-size: 15px; font-family: inherit; }
+  textarea { min-height: 120px; resize: vertical; }
+  button { background: #d4af37; color: #0a1929; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+  button:hover { background: #b8941f; }
+  button.danger { background: #d32f2f; color: #fff; }
+  button.secondary { background: #1e4976; color: #fff; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #132f4c; padding: 16px; border-radius: 10px; text-align: center; border-right: 4px solid #d4af37; }
+  .stat-num { font-size: 28px; color: #d4af37; font-weight: bold; }
+  .stat-label { color: #90a4ae; font-size: 13px; margin-top: 4px; }
+  .story-item { background: #0a1929; padding: 16px; border-radius: 10px; margin: 10px 0; display: flex; gap: 14px; align-items: center; }
+  .story-img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; background: #1e4976; }
+  .story-info { flex: 1; }
+  .story-title { color: #d4af37; font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+  .story-excerpt { color: #b0bec5; font-size: 13px; }
+  .story-actions { display: flex; gap: 8px; }
+  .story-actions button { width: auto; padding: 8px 14px; font-size: 13px; }
+  .preview-img { max-width: 200px; max-height: 200px; border-radius: 8px; margin: 10px 0; display: block; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 14px 24px; border-radius: 8px; color: #fff; z-index: 1000; animation: slide 0.3s; }
+  .toast.success { background: #2e7d32; }
+  .toast.error { background: #d32f2f; }
+  @keyframes slide { from { opacity: 0; top: 0; } to { opacity: 1; top: 20px; } }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; margin-right: 6px; }
+  .badge.pub { background: #2e7d32; }
+  .badge.unpub { background: #757575; }
+  label { display: block; margin-top: 12px; color: #90a4ae; font-size: 14px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+  .live-dot { display: inline-block; width: 10px; height: 10px; background: #4caf50; border-radius: 50%; margin-left: 8px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .ai-btn { background: linear-gradient(135deg, #8e44ad, #3498db); color: #fff; padding: 8px 14px; font-size: 13px; border-radius: 8px; border: none; cursor: pointer; margin-right: 8px; font-weight: bold; transition: 0.2s; width: auto; }
+  .ai-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(142, 68, 173, 0.4); }
+  .ai-btn:disabled { opacity: 0.5; cursor: wait; }
+  .ai-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .ai-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .ai-modal.show { display: flex; }
+  .ai-modal-content { background: #132f4c; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 80vh; overflow-y: auto; }
+  .ai-suggestion { background: #0a1929; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+  .ai-suggestion:hover { border-color: #d4af37; }
+  .ai-loading { text-align: center; padding: 30px; color: #d4af37; }
+  .spinner { display: inline-block; width: 30px; height: 30px; border: 3px solid #1e4976; border-top-color: #d4af37; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- إعدادات Supabase -->
+<div id="setup" class="card login-card" style="display:none">
+  <h1>⚙️ الإعداد الأول</h1>
+  <label>Supabase URL</label>
+  <input id="cfg-url" placeholder="https://xxxxx.supabase.co">
+  <label>Supabase Anon Key</label>
+  <input id="cfg-key" placeholder="eyJhbGc...">
+  <button onclick="saveConfig()">حفظ والمتابعة</button>
+</div>
+
+<!-- شاشة الدخول -->
+<div id="login" class="card login-card" style="display:none">
+  <h1>🔐 دخول الأدمن</h1>
+  <input id="email" type="email" placeholder="البريد الإلكتروني">
+  <input id="password" type="password" placeholder="كلمة المرور">
+  <button onclick="login()">دخول</button>
+  <button class="secondary" onclick="resetConfig()" style="margin-top:10px">تغيير إعدادات Supabase</button>
+</div>
+
+<!-- اللوحة الرئيسية -->
+<div id="dashboard" style="display:none">
+  <h1>📚 لوحة تحكم القصص <span class="live-dot" title="متصل لحظياً"></span></h1>
+  
+  <div class="stats">
+    <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-label">إجمالي القصص</div></div>
+    <div class="stat"><div class="stat-num" id="stat-pub">0</div><div class="stat-label">منشورة</div></div>
+    <div class="stat"><div class="stat-num" id="stat-draft">0</div><div class="stat-label">مسودات</div></div>
+    <div class="stat"><div class="stat-num" id="stat-last">-</div><div class="stat-label">آخر تحديث</div></div>
+  </div>
+
+  <!-- نموذج إضافة/تعديل -->
+  <div class="card">
+    <h2 id="form-title" style="color:#d4af37;margin-bottom:14px">➕ إضافة قصة جديدة</h2>
+    <input type="hidden" id="story-id">
+    <label>عنوان القصة</label>
+    <input id="story-title" placeholder="مثلاً: حكاية الأمير والتنين">
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiSuggestTitles()">✨ اقتراح عناوين جميلة</button>
+    </div>
+    <label>محتوى القصة</label>
+    <textarea id="story-content" placeholder="اكتب القصة هنا..."></textarea>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiAction('improve_content')">📝 تحسين الصياغة</button>
+      <button class="ai-btn" onclick="aiAction('expand_content')">📏 تطويل القصة</button>
+      <button class="ai-btn" onclick="aiAction('fix_grammar')">✅ تصحيح لغوي</button>
+      <button class="ai-btn" onclick="aiGenerateFromIdea()">💡 قصة من فكرة</button>
+    </div>
+    <label>التصنيف</label>
+    <select id="story-category" style="width:100%; padding:12px; margin:8px 0; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff; font-size:15px;">
+      <option value="drama">قصص دراما</option>
+      <option value="horror">قصص رعب</option>
+      <option value="kids">قصص أطفال</option>
+      <option value="sci-fi">قصص خيال علمي</option>
+      <option value="thriller">قصص مشوقة</option>
+      <option value="islamic">قصص دينية</option>
+      <option value="love">قصص حب</option>
+    </select>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiSuggestCategory()">🎯 اقتراح تصنيف تلقائي</button>
+    </div>
+    <label>المؤلف (اختياري)</label>
+    <input id="story-author" placeholder="اسم المؤلف">
+    <label>صورة القصة</label>
+    <input type="file" id="story-image" accept="image/*" onchange="previewImage(event)">
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiGenerateImage()">🎨 توليد صورة بالذكاء الاصطناعي</button>
+    </div>
+    <img id="preview" class="preview-img" style="display:none">
+    <input type="hidden" id="current-image-url">
+    <div class="row">
+      <div>
+        <label>الترتيب (الأكبر يظهر أولاً)</label>
+        <input type="number" id="story-order" value="0">
+      </div>
+      <div>
+        <label><input type="checkbox" id="story-published" checked style="width:auto;margin-left:8px"> منشورة</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button onclick="saveStory()">💾 حفظ</button>
+      <button class="secondary" onclick="resetForm()">🔄 جديد</button>
+      <button class="danger" onclick="logout()">🚪 خروج</button>
+    </div>
+  </div>
+
+  <!-- قائمة القصص -->
+  <div class="card">
+    <h2 style="color:#d4af37;margin-bottom:14px">📖 جميع القصص</h2>
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <label>فلترة بالتصنيف</label>
+        <select id="filter-category" onchange="renderStories()" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+          <option value="">كل التصنيفات</option>
+          <option value="drama">قصص دراما</option>
+          <option value="horror">قصص رعب</option>
+          <option value="kids">قصص أطفال</option>
+          <option value="sci-fi">قصص خيال علمي</option>
+          <option value="thriller">قصص مشوقة</option>
+          <option value="islamic">قصص دينية</option>
+          <option value="love">قصص حب</option>
+        </select>
+      </div>
+      <div>
+        <label>بحث في العنوان</label>
+        <input id="search-input" oninput="renderStories()" placeholder="اكتب للبحث..." style="margin:0">
+      </div>
+    </div>
+    <div id="stories-list"></div>
+  </div>
+</div>
+
+  <!-- مودال AI -->
+  <div class="ai-modal" id="ai-modal">
+    <div class="ai-modal-content">
+      <h3 id="ai-modal-title" style="color:#d4af37;margin-bottom:14px">✨ اقتراحات الذكاء الاصطناعي</h3>
+      <div id="ai-modal-body"></div>
+      <button class="secondary" onclick="closeAIModal()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const AI_ENDPOINT = "/.netlify/functions/gemini";
+
+async function callAI(payload) {
+  const res = await fetch(AI_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || "خطأ غير معروف");
+  return data;
+}
+
+function showAIModal(title, body) {
+  document.getElementById('ai-modal-title').textContent = title;
+  document.getElementById('ai-modal-body').innerHTML = body;
+  document.getElementById('ai-modal').classList.add('show');
+}
+
+function closeAIModal() {
+  document.getElementById('ai-modal').classList.remove('show');
+}
+
+function showLoading(title) {
+  showAIModal(title, '<div class="ai-loading"><div class="spinner"></div><p style="margin-top:14px">جاري المعالجة...</p></div>');
+}
+
+// اقتراح 3 عناوين
+async function aiSuggestTitles() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  showLoading('✨ جاري اقتراح عناوين...');
+  try {
+    const data = await callAI({ action: 'suggest_titles', content });
+    const titles = data.text.split('\n').filter(t => t.trim()).slice(0, 3);
+    const html = titles.map((t, i) => 
+      `<div class="ai-suggestion" onclick="applyTitle('${t.replace(/'/g, "\\'")}')">
+         <strong style="color:#d4af37">${i+1}.</strong> ${escapeHtml(t.trim())}
+       </div>`
+    ).join('');
+    showAIModal('✨ اختر العنوان المناسب', html);
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+    closeAIModal();
+  }
+}
+
+function applyTitle(title) {
+  document.getElementById('story-title').value = title.trim();
+  closeAIModal();
+  toast('تم تطبيق العنوان ✓', 'success');
+}
+
+// تحسين/تطويل/تصحيح المحتوى
+async function aiAction(action) {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  const titles = {
+    improve_content: '📝 جاري تحسين الصياغة...',
+    expand_content: '📏 جاري تطويل القصة...',
+    fix_grammar: '✅ جاري التصحيح اللغوي...'
+  };
+  
+  showLoading(titles[action]);
+  try {
+    const data = await callAI({ action, content });
+    const html = `
+      <p style="color:#90a4ae;margin-bottom:10px">النتيجة:</p>
+      <div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">${escapeHtml(data.text)}</div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button onclick="applyContent(\`${data.text.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">✓ تطبيق</button>
+        <button class="secondary" onclick="closeAIModal()">إلغاء</button>
+      </div>
+    `;
+    showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+    closeAIModal();
+  }
+}
+
+function applyContent(text) {
+  document.getElementById('story-content').value = text;
+  closeAIModal();
+  toast('تم التطبيق ✓', 'success');
+}
+
+// توليد قصة من فكرة
+async function aiGenerateFromIdea() {
+  const idea = prompt('اكتب فكرة القصة باختصار:');
+  if (!idea || !idea.trim()) return;
+  
+  const category = document.getElementById('story-category').value;
+  showLoading('💡 جاري توليد القصة...');
+  try {
+    const data = await callAI({ action: 'generate_story', prompt: idea, category });
+    const html = `
+      <p style="color:#90a4ae;margin-bottom:10px">القصة المُولَّدة:</p>
+      <div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">${escapeHtml(data.text)}</div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button onclick="applyContent(\`${data.text.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">✓ استخدم هذه القصة</button>
+        <button class="secondary" onclick="closeAIModal()">إلغاء</button>
+      </div>
+    `;
+    showAIModal('💡 قصة جديدة', html);
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+    closeAIModal();
+  }
+}
+
+// اقتراح تصنيف
+async function aiSuggestCategory() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  toast('🎯 جاري تحليل القصة...', 'success');
+  try {
+    const data = await callAI({ action: 'suggest_category', content });
+    const cat = data.text.trim().toLowerCase().replace(/[^\w-]/g, '');
+    const validCats = ['drama', 'horror', 'kids', 'sci-fi', 'thriller', 'islamic', 'love'];
+    if (validCats.includes(cat)) {
+      document.getElementById('story-category').value = cat;
+      toast('✓ تم تحديد التصنيف: ' + cat, 'success');
+    } else {
+      toast('لم يستطع تحديد تصنيف دقيق', 'error');
+    }
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+  }
+}
+
+// توليد صورة
+async function aiGenerateImage() {
+  const title = document.getElementById('story-title').value.trim();
+  const content = document.getElementById('story-content').value.trim();
+  if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
+  
+  showLoading('🎨 جاري توليد الصورة... (قد يستغرق 30 ثانية)');
+  try {
+    const data = await callAI({ action: 'generate_image', title, content });
+    if (!data.image) throw new Error('لم يتم توليد صورة');
+    
+    // تحويل base64 لـ blob ورفعه
+    const byteChars = atob(data.image);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+    const file = new File([blob], `ai_${Date.now()}.png`, { type: 'image/png' });
+    
+    const imageUrl = await uploadImage(file);
+    document.getElementById('current-image-url').value = imageUrl;
+    const img = document.getElementById('preview');
+    img.src = imageUrl;
+    img.style.display = 'block';
+    
+    closeAIModal();
+    toast('✓ تم توليد الصورة ورفعها', 'success');
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+    closeAIModal();
+  }
+}
+
+let supabase_stored = null;
+let sb = null;
+let stories = [];
+
+// تحميل الإعدادات
+function init() {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (!url || !key) {
+    document.getElementById('setup').style.display = 'block';
+    return;
+  }
+  sb = window.supabase.createClient(url, key);
+  checkAuth();
+}
+
+function saveConfig() {
+  const url = document.getElementById('cfg-url').value.trim();
+  const key = document.getElementById('cfg-key').value.trim();
+  if (!url || !key) return toast('املأ الحقول', 'error');
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  location.reload();
+}
+
+function resetConfig() {
+  localStorage.clear();
+  location.reload();
+}
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showDashboard();
+  else document.getElementById('login').style.display = 'block';
+}
+
+async function login() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return toast('خطأ في الدخول: ' + error.message, 'error');
+  toast('تم الدخول بنجاح', 'success');
+  showDashboard();
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+function showDashboard() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadStories();
+  subscribeRealtime();
+}
+
+async function loadStories() {
+  const { data, error } = await sb
+    .from('stories')
+    .select('*')
+    .order('display_order', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) return toast('خطأ: ' + error.message, 'error');
+  stories = data || [];
+  renderStories();
+  updateStats();
+}
+
+function subscribeRealtime() {
+  sb.channel('admin-stories')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => {
+      loadStories();
+    })
+    .subscribe();
+}
+
+function renderStories() {
+  const list = document.getElementById('stories-list');
+  const filterCat = document.getElementById('filter-category')?.value || '';
+  const searchTerm = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+  
+  let filtered = stories;
+  if (filterCat) filtered = filtered.filter(s => s.category_id === filterCat);
+  if (searchTerm) filtered = filtered.filter(s => s.title.toLowerCase().includes(searchTerm));
+  
+  if (filtered.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:30px">لا توجد قصص مطابقة</p>';
+    return;
+  }
+  
+  const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
+  
+  list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
+    filtered.map(s => `
+    <div class="story-item">
+      <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
+      <div class="story-info">
+        <div class="story-title">${escapeHtml(s.title)}</div>
+        <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
+        <div style="margin-top:6px">
+          <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
+          <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
+          <span style="color:#90a4ae;font-size:12px">ترتيب: ${s.display_order}</span>
+        </div>
+      </div>
+      <div class="story-actions">
+        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
+        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = stories.length;
+  document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
+  document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
+  if (stories.length) {
+    const last = stories.reduce((a, b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
+    document.getElementById('stat-last').textContent = new Date(last.updated_at).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  }
+}
+
+function previewImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('preview');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadImage(file) {
+  const ext = file.name.split('.').pop();
+  const name = `story_${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('story-images').upload(name, file);
+  if (error) throw error;
+  const { data } = sb.storage.from('story-images').getPublicUrl(name);
+  return data.publicUrl;
+}
+
+async function saveStory() {
+  const id = document.getElementById('story-id').value;
+  const title = document.getElementById('story-title').value.trim();
+  const content = document.getElementById('story-content').value.trim();
+  const order = parseInt(document.getElementById('story-order').value) || 0;
+  const published = document.getElementById('story-published').checked;
+  const categoryId = document.getElementById('story-category').value;
+  const author = document.getElementById('story-author').value.trim();
+  const file = document.getElementById('story-image').files[0];
+  let imageUrl = document.getElementById('current-image-url').value;
+
+  if (!title || !content) return toast('العنوان والمحتوى مطلوبان', 'error');
+
+  try {
+    if (file) {
+      toast('جاري رفع الصورة...', 'success');
+      imageUrl = await uploadImage(file);
+    }
+    const payload = { title, content, image_url: imageUrl, display_order: order, is_published: published, category_id: categoryId, author: author || null };
+    const result = id
+      ? await sb.from('stories').update(payload).eq('id', id)
+      : await sb.from('stories').insert(payload);
+    if (result.error) throw result.error;
+    toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
+    resetForm();
+  } catch (e) {
+    toast('خطأ: ' + e.message, 'error');
+  }
+}
+
+function editStory(id) {
+  const s = stories.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('story-id').value = s.id;
+  document.getElementById('story-title').value = s.title;
+  document.getElementById('story-content').value = s.content;
+  document.getElementById('story-order').value = s.display_order;
+  document.getElementById('story-published').checked = s.is_published;
+  document.getElementById('story-category').value = s.category_id || 'horror';
+  document.getElementById('story-author').value = s.author || '';
+  document.getElementById('current-image-url').value = s.image_url || '';
+  if (s.image_url) {
+    const img = document.getElementById('preview');
+    img.src = s.image_url;
+    img.style.display = 'block';
+  }
+  document.getElementById('form-title').textContent = '✏️ تعديل القصة';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteStory(id) {
+  if (!confirm('متأكد من الحذف؟')) return;
+  const { error } = await sb.from('stories').delete().eq('id', id);
+  if (error) return toast('خطأ: ' + error.message, 'error');
+  toast('تم الحذف ✓', 'success');
+}
+
+function resetForm() {
+  document.getElementById('story-id').value = '';
+  document.getElementById('story-title').value = '';
+  document.getElementById('story-content').value = '';
+  document.getElementById('story-order').value = '0';
+  document.getElementById('story-published').checked = true;
+  document.getElementById('story-category').value = 'horror';
+  document.getElementById('story-author').value = '';
+  document.getElementById('story-image').value = '';
+  document.getElementById('current-image-url').value = '';
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('form-title').textContent = '➕ إضافة قصة جديدة';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+init();
+</script>
+</body>
+</html>
