@@ -1,4 +1,4 @@
-// ✅ Netlify Function: ULTIMATE AI + REAL IMAGES SYSTEM
+// ✅ Netlify Function: FINAL AI IMAGE + TEXT SYSTEM
 
 exports.handler = async (event) => {
   const headers = {
@@ -14,24 +14,14 @@ exports.handler = async (event) => {
     const { action, prompt, content, title, category } = JSON.parse(event.body);
 
     const GEMINI_KEY = process.env.GEMINI_API_KEY;
-    const UNSPLASH_KEY = process.env.UNSPLASH_ACCESS_KEY;
-
     if (!GEMINI_KEY) throw new Error("GEMINI_API_KEY missing");
-    if (!UNSPLASH_KEY) throw new Error("UNSPLASH_ACCESS_KEY missing");
 
-    // 🎯 IMAGE SYSTEM
+    // 🎯 IMAGE SYSTEM (NEW)
     if (action === "generate_image") {
-      return await handleRealImages(GEMINI_KEY, UNSPLASH_KEY, title, content, category, headers);
+      return await handleImageGeneration(GEMINI_KEY, title, content, category, headers);
     }
 
     // 🧠 TEXT SYSTEM
-    const MODEL_STRATEGY = {
-      suggest_titles: ["gemini-2.5-flash"],
-      suggest_category: ["gemini-2.5-flash"],
-      fix_grammar: ["gemini-2.5-flash"],
-      improve_content: ["gemini-2.5-flash"],
-    };
-
     const promptMap = {
       suggest_titles: `اقترح 3 عناوين جذابة:\n${content}`,
       improve_content: `حسن النص بدون تغيير الأحداث:\n${content}`,
@@ -42,24 +32,18 @@ exports.handler = async (event) => {
     const finalPrompt = promptMap[action];
     if (!finalPrompt) throw new Error("Invalid action");
 
-    const models = MODEL_STRATEGY[action] || ["gemini-2.5-flash"];
+    const result = await callGemini(GEMINI_KEY, "gemini-2.5-flash", finalPrompt);
 
-    for (const model of models) {
-      const result = await callGemini(GEMINI_KEY, model, finalPrompt);
-      if (result.success) {
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({
-            success: true,
-            text: result.text,
-            model
-          })
-        };
-      }
-    }
+    if (!result.success) throw new Error("AI failed");
 
-    throw new Error("All models failed");
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        text: result.text
+      })
+    };
 
   } catch (err) {
     return {
@@ -72,7 +56,7 @@ exports.handler = async (event) => {
 
 
 
-// 🧠 GEMINI CALL (FAST + SAFE)
+// 🧠 GEMINI CALL
 async function callGemini(apiKey, model, prompt) {
   try {
     const res = await fetch(
@@ -83,7 +67,7 @@ async function callGemini(apiKey, model, prompt) {
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 1200,
+            maxOutputTokens: 800,
             temperature: 0.7
           }
         })
@@ -104,80 +88,86 @@ async function callGemini(apiKey, model, prompt) {
 
 
 
-// 🎨 REAL IMAGE ENGINE (SMART VERSION)
-async function handleRealImages(apiKey, unsplashKey, title, content, category, headers) {
+// 🎨 FINAL IMAGE SYSTEM (AI MATCHED TO STORY)
+async function handleImageGeneration(apiKey, title, content, category, headers) {
   try {
 
-    // 🔥 STEP 1: Smart Keyword Extraction
-    const keywordPrompt = `
-    Generate 3 highly specific photo search keywords.
+    // 🔥 STEP 1: استخراج مشهد حقيقي من القصة
+    const scenePrompt = `
+    Describe ONE realistic cinematic scene from this story.
 
     Include:
-    - place
-    - subject
+    - character
+    - location
+    - action
     - mood
+
+    Max 20 words.
 
     Title: ${title}
     Story: ${content.substring(0, 1200)}
-
-    Output only keywords separated by commas.
     `;
 
-    const keywordRes = await callGemini(apiKey, "gemini-2.5-flash", keywordPrompt);
+    const sceneRes = await callGemini(apiKey, "gemini-2.5-flash", scenePrompt);
 
-    let keywords = keywordRes.success ? keywordRes.text : "cinematic dramatic scene";
+    let scene = sceneRes.success
+      ? sceneRes.text.replace(/\n/g, "").trim()
+      : "cinematic dramatic scene";
 
-    console.log("Keywords:", keywords);
+    console.log("Scene:", scene);
 
-    // 🔥 STEP 2: Multi-query تحسين الدقة
-    const queries = keywords.split(",").map(q => q.trim()).slice(0, 3);
+    // 🎨 STEP 2: توليد الصورة بـ Flux
+    const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(scene)}?width=1024&height=768&model=flux&enhance=true`;
 
-    let images = [];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    for (const q of queries) {
-      const res = await fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(q)}&per_page=2&orientation=landscape`,
-        {
-          headers: {
-            Authorization: `Client-ID ${unsplashKey}`,
-          }
-        }
-      );
+    try {
+      const response = await fetch(fluxUrl, { signal: controller.signal });
+      clearTimeout(timeout);
 
-      const data = await res.json();
+      if (!response.ok) throw new Error("Flux failed");
 
-      if (data.results) {
-        images.push(...data.results.map(img => ({
-          url: img.urls.regular,
-          thumb: img.urls.small,
-          alt: img.alt_description || q,
-          author: img.user.name
-        })));
-      }
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          scene,
+          image: base64,
+          source: "flux-ai"
+        })
+      };
+
+    } catch (fluxErr) {
+      clearTimeout(timeout);
+
+      console.log("Flux failed → fallback");
+
+      // 🔄 fallback صورة بسيطة
+      const fallbackUrl = `https://image.pollinations.ai/prompt/cinematic%20scene`;
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          scene,
+          image_url: fallbackUrl,
+          fallback: true
+        })
+      };
     }
-
-    // 🔥 STEP 3: إزالة التكرار
-    const uniqueImages = Array.from(new Map(images.map(i => [i.url, i])).values());
-
-    if (uniqueImages.length === 0) throw new Error("No images found");
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        keywords,
-        images: uniqueImages.slice(0, 5),
-        source: "unsplash-smart"
-      })
-    };
 
   } catch (err) {
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
-        error: "Image engine failed: " + err.message
+        error: "Image system failed: " + err.message
       })
     };
   }
