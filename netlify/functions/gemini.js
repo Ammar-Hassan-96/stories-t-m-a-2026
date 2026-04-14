@@ -36,9 +36,10 @@ exports.handler = async (event) => {
       improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
       
       // مهام إبداعية عالية: أقوى جودة مع fallback متعدد
-      expand_content: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
-      continue_expand: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
-      generate_story: ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      // ملاحظة: gemini-3-pro-preview اتشال في مارس 2026، استبدلناه بـ 3.1-pro-preview
+      expand_content: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      continue_expand: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
+      generate_story: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
     };
 
     // بناء الـ prompt حسب الـ action
@@ -132,12 +133,12 @@ ${content}`;
       }
     }
 
-    // لو كل الموديلات خلصت حصتها
+    // لو كل الموديلات فشلت
     return {
       statusCode: 429,
       headers,
       body: JSON.stringify({ 
-        error: "خلصت الحصة اليومية لكل الموديلات. حاول تاني بكرة أو بعد ساعة." 
+        error: "فشلت كل الموديلات. آخر خطأ: " + (lastError || "غير معروف") + ". حاول بعد ساعة أو بكرة."
       })
     };
 
@@ -150,15 +151,25 @@ ${content}`;
   }
 };
 
-// 🔍 فحص لو الخطأ بسبب خلوص الحصة
-function isQuotaError(errorMsg) {
+// 🔍 فحص لو الخطأ بسبب خلوص الحصة أو موديل غير موجود
+function isRetryableError(errorMsg) {
   if (!errorMsg) return false;
   const msg = errorMsg.toLowerCase();
   return msg.includes("quota") || 
          msg.includes("rate limit") || 
          msg.includes("resource exhausted") ||
          msg.includes("429") ||
-         msg.includes("exceeded");
+         msg.includes("exceeded") ||
+         msg.includes("not found") ||
+         msg.includes("is not supported") ||
+         msg.includes("404") ||
+         msg.includes("not available") ||
+         msg.includes("deprecated");
+}
+
+// (alias للإصدار القديم)
+function isQuotaError(errorMsg) {
+  return isRetryableError(errorMsg);
 }
 
 // 📞 استدعاء Gemini API
