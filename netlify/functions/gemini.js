@@ -1,14 +1,11 @@
-// Netlify Function: Gemini AI Proxy (RESILIENT VERSION 🔥)
+// Netlify Function: Gemini AI Proxy (ZERO CRASH VERSION 🔥)
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * 🔥 Smart Fetch with full resilience
- * - Handles high demand
- * - Handles quota
- * - Handles random failures
- */
-async function resilientFetch(url, options, retries = 6) {
+// ===============================
+// SMART FETCH (NO FAIL SYSTEM)
+// ===============================
+async function safeFetch(url, options, retries = 5) {
   let delay = 1500;
 
   for (let i = 0; i < retries; i++) {
@@ -16,10 +13,17 @@ async function resilientFetch(url, options, retries = 6) {
       const res = await fetch(url, options);
       const text = await res.text();
 
+      // 🔥 Detect HTML response
+      if (text.trim().startsWith("<")) {
+        console.log("⚠️ HTML RESPONSE DETECTED");
+        throw new Error("HTML response received instead of JSON");
+      }
+
       let data;
       try {
         data = JSON.parse(text);
       } catch {
+        console.log("RAW:", text);
         throw new Error("Invalid JSON response");
       }
 
@@ -27,7 +31,7 @@ async function resilientFetch(url, options, retries = 6) {
 
       const msg = data?.error?.message || "";
 
-      // 🔥 Retryable errors
+      // 🔁 Retryable errors
       if (
         msg.includes("high demand") ||
         msg.includes("Quota") ||
@@ -35,25 +39,32 @@ async function resilientFetch(url, options, retries = 6) {
         res.status === 429 ||
         res.status >= 500
       ) {
-        console.log(`⏳ Retry in ${delay}ms...`);
+        console.log(`⏳ Retry in ${delay}ms`);
         await sleep(delay);
         delay *= 2;
         continue;
       }
 
-      throw new Error(msg || "Unknown API error");
+      throw new Error(msg || "API Error");
 
     } catch (err) {
-      if (i === retries - 1) throw err;
+      console.log(`❌ Attempt ${i + 1} failed:`, err.message);
+
+      if (i === retries - 1) {
+        throw err;
+      }
+
       await sleep(delay);
       delay *= 2;
     }
   }
 
-  throw new Error("Max retries reached");
+  throw new Error("Max retries exceeded");
 }
 
-// 🔥 Simple in-memory cache (reduces API usage)
+// ===============================
+// SIMPLE CACHE
+// ===============================
 const cache = new Map();
 
 exports.handler = async (event) => {
@@ -87,9 +98,9 @@ exports.handler = async (event) => {
 
     let finalPrompt = "";
 
-    // ======================
-    // PROMPTS OPTIMIZED
-    // ======================
+    // =========================
+    // PROMPTS
+    // =========================
     switch (action) {
       case "generate_story":
         finalPrompt = `
@@ -97,19 +108,19 @@ exports.handler = async (event) => {
 
 Part ${part}
 
-${part === 1 ? "ابدأ القصة بشكل قوي" : "اكمل بدون إعادة"}
+${part === 1 ? "ابدأ القصة بقوة" : "اكمل بدون إعادة"}
 
 الفكرة:
 ${prompt}
 
 مهم:
 - لا تختصر
-- استمر بسلاسة
+- استمر حتى النهاية
 `;
         break;
 
       case "expand_content":
-        finalPrompt = `وسّع النص إلى قصة مفصلة:\n${content}`;
+        finalPrompt = `وسع النص:\n${content}`;
         break;
 
       case "improve_content":
@@ -117,20 +128,20 @@ ${prompt}
         break;
 
       case "suggest_titles":
-        finalPrompt = `اقترح 3 عناوين فقط:\n${content}`;
+        finalPrompt = `3 عناوين فقط:\n${content}`;
         break;
 
       case "suggest_category":
-        finalPrompt = `اختار تصنيف واحد فقط:\n${content}`;
+        finalPrompt = `اختار تصنيف واحد:\n${content}`;
         break;
 
       case "fix_grammar":
-        finalPrompt = `صحح النص فقط:\n${content}`;
+        finalPrompt = `صحح فقط:\n${content}`;
         break;
 
       case "generate_image":
         try {
-          const gemini = await resilientFetch(
+          const gemini = await safeFetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
             {
               method: "POST",
@@ -146,7 +157,7 @@ ${prompt}
                   },
                 ],
                 generationConfig: {
-                  maxOutputTokens: 120,
+                  maxOutputTokens: 100,
                   temperature: 0.7,
                 },
               }),
@@ -176,7 +187,9 @@ ${prompt}
           return {
             statusCode: 500,
             headers,
-            body: JSON.stringify({ error: err.message }),
+            body: JSON.stringify({
+              error: "Image failed: " + err.message,
+            }),
           };
         }
 
@@ -188,9 +201,9 @@ ${prompt}
         };
     }
 
-    // ======================
+    // =========================
     // CACHE CHECK
-    // ======================
+    // =========================
     const cacheKey = `${action}_${prompt}_${part}`;
 
     if (cache.has(cacheKey)) {
@@ -201,19 +214,19 @@ ${prompt}
       };
     }
 
-    // ======================
+    // =========================
     // GEMINI CALL
-    // ======================
+    // =========================
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
-    const result = await resilientFetch(url, {
+    const result = await safeFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: finalPrompt }] }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 6000, // 🔥 مهم لتقليل الضغط
+          maxOutputTokens: 6000,
         },
       }),
     });
@@ -238,13 +251,18 @@ ${prompt}
       headers,
       body: JSON.stringify(response),
     };
+
   } catch (error) {
+    console.log("🔥 FINAL ERROR:", error.message);
+
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
+        success: false,
         error: error.message,
-        hint: "System is using resilient mode",
+        fallback: true,
+        message: "System is in safe mode - retrying recommended",
       }),
     };
   }
