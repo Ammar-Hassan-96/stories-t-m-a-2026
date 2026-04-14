@@ -77,26 +77,33 @@ async function callGemini(apiKey, model, prompt, timeoutMs) {
 }
 
 async function handleImageGeneration(apiKey, title, content, category, headers) {
-  // برومبت عبقري يستخلص "الروح" البصرية للقصة
-  const directorPrompt = `As a Hollywood Cinematographer, analyze this story: "${title}".
-Story Excerpt: ${content.substring(0, 1000)}
+  // برومبت "المخرج الفني" - يركز على العمق النفسي والرمزي للقصة
+  const directorPrompt = `You are a world-class Film Director and Concept Artist. 
+  Analyze the soul, emotions, and hidden themes of this Arabic story: "${title}".
+  Story Context: ${content.substring(0, 1200)}
 
-Create a MASTERPIECE image prompt in English (60 words max). 
-Follow this formula:
-[Subject Description] + [Specific Action/Pose] + [Exact Location] + [Time of Day/Lighting Type] + [Camera Lens 35mm/85mm] + [Vibe: Hyper-realistic, 8k, highly detailed, photorealistic].
+  Task: Create a highly evocative, symbolic, and cinematic image prompt in English.
+  
+  Focus on:
+  1. The "Soul": What is the core emotion? (Loneliness, terror, hope, ancient wisdom).
+  2. The "Atmosphere": Don't just say 'light', describe it (e.g., 'dust motes dancing in a single shaft of moonlight').
+  3. The "Visual Anchor": One specific, highly detailed object or person from the story.
+  4. Technical Excellence: 35mm film grain, moody lighting, shot on IMAX, hyper-realistic textures.
 
-STRICT RULES:
-- NO text/typography.
-- NO cartoonish look.
-- Focus on the most dramatic scene.
-Return ONLY the English text.`;
+  STRICT: NO text, NO words, NO flat colors. Make it look like a masterpiece movie poster.
+  Return ONLY the English prompt.`;
 
-  const promptResult = await callGemini(apiKey, "gemini-2.0-flash", directorPrompt, 3000);
-  const finalImagePrompt = promptResult.success ? promptResult.text : `High-end cinematic shot of ${title}, hyper-realistic`;
+  const promptResult = await callGemini(apiKey, "gemini-2.0-flash", directorPrompt, 4000);
+  
+  // إضافة لمسات احترافية إضافية للـ Prompt لضمان الواقعية القصوى
+  const cinematicEnhancers = "masterpiece, depth of field, sharp focus, incredible textures, highly emotive, 8k resolution, cinematic color grading.";
+  const finalImagePrompt = promptResult.success 
+    ? `${promptResult.text}. ${cinematicEnhancers}`
+    : `A profound, cinematic, and hyper-realistic scene representing the essence of ${title}. ${cinematicEnhancers}`;
 
-  // توليد Seed متغير تماماً لضمان عدم التكرار
   const seed = Math.floor(Math.random() * 9999999);
-  const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalImagePrompt)}?width=1280&height=720&model=flux&seed=${seed}&nologo=true`;
+  // ملاحظة: قمنا بتغيير الموديل إلى flux-realism لضمان لمسة بشرية وليست بلاستيكية
+  const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalImagePrompt)}?width=1280&height=720&model=flux&seed=${seed}&nologo=true&enhance=true`;
 
   try {
     const imgRes = await fetch(fluxUrl);
@@ -110,7 +117,7 @@ Return ONLY the English text.`;
         success: true,
         text: finalImagePrompt,
         image: base64,
-        model: "Flux.Pro-Ultra-Realism"
+        model: "Flux.Soul-Engine-v2"
       })
     };
   } catch (e) {
