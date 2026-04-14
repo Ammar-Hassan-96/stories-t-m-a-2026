@@ -51,9 +51,54 @@ exports.handler = async (event) => {
         break;
 
       case "generate_image":
-        useImageModel = true;
-        finalPrompt = `Create a beautiful, artistic, high-quality illustration for an Arabic story. Story title: "${title}". Story excerpt: ${content.substring(0, 500)}. Style: cinematic, detailed, atmospheric, suitable as a story cover image. No text in the image.`;
-        break;
+        // استخدام Pollinations.ai - مجاني بالكامل
+        try {
+          // توليد prompt ذكي بـ Gemini الأول (مجاني)
+          const promptResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{
+                    text: `Create a detailed English image generation prompt (max 200 characters) for an illustration of an Arabic story. Story title: "${title}". Story excerpt: ${content.substring(0, 400)}. The prompt should describe the scene, mood, and art style (cinematic, detailed). Return only the prompt, no explanations.`
+                  }]
+                }],
+                generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
+              })
+            }
+          );
+          const promptData = await promptResponse.json();
+          const imagePrompt = promptData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 
+            `Beautiful artistic illustration for story "${title}"`;
+          
+          // جلب الصورة من Pollinations (مجاني)
+          const encodedPrompt = encodeURIComponent(imagePrompt);
+          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
+          
+          const imgRes = await fetch(pollinationsUrl);
+          if (!imgRes.ok) throw new Error("فشل توليد الصورة");
+          
+          const imgBuffer = await imgRes.arrayBuffer();
+          const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              text: imagePrompt,
+              image: imgBase64
+            })
+          };
+        } catch (err) {
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message })
+          };
+        }
 
       default:
         return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
