@@ -1,4 +1,31 @@
-// Netlify Function: Gemini AI Proxy (PRO VERSION)
+// Netlify Function: Gemini AI Proxy (ULTRA OPTIMIZED)
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 🔥 Retry + Anti-Quota
+async function fetchWithRetry(url, options, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    const res = await fetch(url, options);
+    const data = await res.json();
+
+    if (res.ok) return data;
+
+    const msg = data.error?.message || "";
+
+    if (msg.includes("Quota") || msg.includes("rate")) {
+      console.log("⏳ Quota hit... waiting 60s");
+      await sleep(60000);
+      continue;
+    }
+
+    throw new Error(msg);
+  }
+
+  throw new Error("Max retries exceeded");
+}
+
+// 🔥 Cache بسيط (يقلل requests)
+const cache = new Map();
 
 exports.handler = async (event) => {
   const headers = {
@@ -20,112 +47,147 @@ exports.handler = async (event) => {
     const API_KEY = process.env.GEMINI_API_KEY;
 
     if (!API_KEY) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ" }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "API KEY missing" }) };
     }
 
     let finalPrompt = "";
-    let useImageModel = false;
 
-    switch (action) {
+    // 🔥 دمج العمليات لتقليل requests
+    if (action === "generate_full_package") {
+      finalPrompt = `
+أنشئ حزمة كاملة للقصة:
 
-      case "suggest_titles":
-        finalPrompt = `اقرأ القصة التالية واقترح 5 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 10 كلمات). أرجع فقط العناوين بدون شرح:\n\n${content}`;
-        break;
+1. قصة طويلة (3000+ كلمة)
+2. 3 عناوين جذابة
+3. تصنيف واحد مناسب
 
-      case "improve_content":
-        finalPrompt = `أعد كتابة القصة التالية بأسلوب أدبي أقوى وأكثر تشويقًا، بدون تقصير، بل مع إضافة وصف ومشاعر أعمق:\n\n${content}`;
-        break;
+ارجع بالشكل:
+TITLE:
+...
+TITLES:
+...
+CATEGORY:
+...
+STORY:
+...
 
-      case "expand_content":
-        finalPrompt = `وسّع القصة التالية لتصبح قصة طويلة جداً (4000+ كلمة).
+الفكرة: ${prompt}
+`;
+    } else {
 
-مهم جداً:
+      switch (action) {
+
+        case "suggest_titles":
+          finalPrompt = `اقترح 5 عناوين فقط:\n${content}`;
+          break;
+
+        case "improve_content":
+          finalPrompt = `حسّن النص بدون تقصير:\n${content}`;
+          break;
+
+        case "expand_content":
+          finalPrompt = `
+وسّع النص التالي ليكون 4000+ كلمة.
+
+مهم:
 - لا تختصر
 - لا تتوقف فجأة
-- لو لم تكمل، استمر وكأنك ستكمل في جزء آخر
-
-أضف:
-- حوارات كثيرة
-- وصف تفصيلي
-- مشاعر داخلية
 
 ${content}`;
-        break;
+          break;
 
-      case "generate_story":
-        finalPrompt = `اكتب قصة احترافية طويلة جداً (4000+ كلمة)
+        case "generate_story":
+          finalPrompt = `
+اكتب قصة طويلة جدًا (4000+ كلمة)
 
 Part ${part}:
 
 ${part === 1 
-? `ابدأ القصة من البداية مع تقديم قوي وشخصيات واضحة وتصاعد درامي.`
-: `اكمل القصة من حيث انتهى الجزء السابق بدون إعادة.`}
+? "ابدأ القصة من البداية"
+: "اكمل القصة بدون إعادة"}
 
-الفكرة: ${prompt}
-التصنيف: ${category || "general"}
+${prompt}
 
 مهم:
 - لا تختصر
-- اكتب بتفصيل عالي
-- اجعل النهاية مفتوحة لو هذا ليس الجزء الأخير
+- استمر حتى النهاية
 `;
-        break;
+          break;
 
-      case "fix_grammar":
-        finalPrompt = `صحح الأخطاء فقط بدون تغيير الأسلوب:\n\n${content}`;
-        break;
+        case "fix_grammar":
+          finalPrompt = `صحح فقط:\n${content}`;
+          break;
 
-      case "suggest_category":
-        finalPrompt = `حدد تصنيف واحد فقط من: drama, horror, kids, sci-fi, thriller, islamic, love\n\n${content}`;
-        break;
+        case "suggest_category":
+          finalPrompt = `اختار تصنيف واحد:\n${content}`;
+          break;
 
-      case "generate_image":
-        try {
-          const promptResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: `Create short cinematic image prompt for: "${title}" based on: ${content.substring(0, 300)}`
-                  }]
-                }],
-                generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
-              })
+        case "generate_image":
+          try {
+            // 🔥 cache للصورة
+            const cacheKey = "img_" + title;
+            if (cache.has(cacheKey)) {
+              return {
+                statusCode: 200,
+                headers,
+                body: JSON.stringify(cache.get(cacheKey))
+              };
             }
-          );
 
-          const promptData = await promptResponse.json();
-          const imagePrompt = promptData.candidates?.[0]?.content?.parts?.[0]?.text || title;
+            const promptRes = await fetchWithRetry(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [{
+                      text: `Create short cinematic prompt: ${title}`
+                    }]
+                  }],
+                  generationConfig: { maxOutputTokens: 100 }
+                })
+              }
+            );
 
-          const encodedPrompt = encodeURIComponent(imagePrompt);
-          const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&seed=${Date.now()}`;
+            const imgPrompt = promptRes.candidates?.[0]?.content?.parts?.[0]?.text || title;
 
-          const imgRes = await fetch(url);
-          const buffer = await imgRes.arrayBuffer();
+            const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPrompt)}?seed=${Date.now()}`;
 
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
+            const imgRes = await fetch(imgUrl);
+            const buffer = await imgRes.arrayBuffer();
+
+            const result = {
               success: true,
               image: Buffer.from(buffer).toString("base64"),
-              text: imagePrompt
-            })
-          };
+              text: imgPrompt
+            };
 
-        } catch (err) {
-          return {
-            statusCode: 500,
-            headers,
-            body: JSON.stringify({ error: err.message })
-          };
-        }
+            cache.set(cacheKey, result);
 
-      default:
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify(result)
+            };
+
+          } catch (err) {
+            throw new Error("Image error: " + err.message);
+          }
+
+        default:
+          return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid action" }) };
+      }
+    }
+
+    // 🔥 Cache للنصوص
+    const cacheKey = `${action}_${prompt}_${part}`;
+    if (cache.has(cacheKey)) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(cache.get(cacheKey))
+      };
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
@@ -134,42 +196,36 @@ ${part === 1
       contents: [{ parts: [{ text: finalPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 16000
+        maxOutputTokens: 12000
       }
     };
 
-    const response = await fetch(url, {
+    const data = await fetchWithRetry(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Gemini Error");
-    }
-
-    const parts = data.candidates?.[0]?.content?.parts || [];
     let textResult = "";
+    const partsArr = data.candidates?.[0]?.content?.parts || [];
 
-    parts.forEach(p => {
+    partsArr.forEach(p => {
       if (p.text) textResult += p.text;
     });
 
-    // 🔥 fallback لو الرد قصير
-    if (textResult.length < 500 && action.includes("story")) {
-      textResult += "\n\n(ملحوظة: يمكن طلب الجزء التالي لإكمال القصة)";
-    }
+    const result = {
+      success: true,
+      text: textResult.trim(),
+      nextPart: part + 1
+    };
+
+    // 🔥 خزّن النتيجة
+    cache.set(cacheKey, result);
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        success: true,
-        text: textResult.trim(),
-        nextPart: part + 1
-      })
+      body: JSON.stringify(result)
     };
 
   } catch (error) {
