@@ -1,287 +1,195 @@
+// Netlify Function: Gemini AI Proxy (Production Ready)
 
-// Netlify Function: Gemini AI Proxy (FINAL STABLE + IMAGE FIXED)
+const DEFAULT_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// ===============================
-// SAFE FETCH (ANTI CRASH SYSTEM)
-// ===============================
-async function safeFetch(url, options, retries = 5) {
-  let delay = 1500;
-
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      const text = await res.text();
-
-      // 🔥 HTML DETECTION
-      if (text.trim().startsWith("<")) {
-        throw new Error("HTML response detected");
-      }
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("Invalid JSON response");
-      }
-
-      if (res.ok) return data;
-
-      const msg = data?.error?.message || "";
-
-      if (
-        msg.includes("high demand") ||
-        msg.includes("Quota") ||
-        msg.includes("rate") ||
-        res.status === 429 ||
-        res.status >= 500
-      ) {
-        await sleep(delay);
-        delay *= 2;
-        continue;
-      }
-
-      throw new Error(msg || "API error");
-
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await sleep(delay);
-      delay *= 2;
-    }
+const safeJsonParse = (str) => {
+  try {
+    return JSON.parse(str || "{}");
+  } catch {
+    return null;
   }
+};
 
-  throw new Error("Max retries exceeded");
-}
+const validateInput = ({ action, prompt, content }) => {
+  if (!action) return "Missing action";
+  if (
+    ["improve_content", "expand_content", "fix_grammar", "suggest_titles", "suggest_category"].includes(action) &&
+    !content
+  ) {
+    return "Missing content";
+  }
+  if (action === "generate_story" && !prompt) {
+    return "Missing prompt";
+  }
+  return null;
+};
 
-// ===============================
-// SIMPLE CACHE
-// ===============================
-const cache = new Map();
+const buildPrompt = ({ action, prompt, content, title, category }) => {
+  switch (action) {
+    case "suggest_titles":
+      return `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات). أرجع العناوين فقط:\n\n${content}`;
+
+    case "improve_content":
+      return `أعد صياغة القصة بأسلوب أدبي جذاب مع الحفاظ على التفاصيل:\n\n${content}`;
+
+    case "expand_content":
+      return `وسّع القصة لتصبح بين 3000 و 5000 كلمة مع تفاصيل غنية:\n\n${content}`;
+
+    case "fix_grammar":
+      return `صحّح الأخطاء اللغوية فقط:\n\n${content}`;
+
+    case "generate_story":
+      return `اكتب قصة احترافية طويلة (3000-5000 كلمة):\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "general"}`;
+
+    case "suggest_category":
+      return `حدد تصنيف القصة (drama, horror, kids, sci-fi, thriller, islamic, love):\n\n${content}`;
+
+    default:
+      return null;
+  }
+};
+
+const callGemini = async (url, body) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error?.message || "Gemini API error");
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 exports.handler = async (event) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+    return { statusCode: 200, headers: DEFAULT_HEADERS, body: "" };
   }
 
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers, body: "Method not allowed" };
+    return {
+      statusCode: 405,
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ error: "Method not allowed" }),
+    };
   }
 
+  const API_KEY = process.env.GEMINI_API_KEY;
+  if (!API_KEY) {
+    return {
+      statusCode: 500,
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ error: "API key missing" }),
+    };
+  }
+
+  const bodyData = safeJsonParse(event.body);
+  if (!bodyData) {
+    return {
+      statusCode: 400,
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ error: "Invalid JSON" }),
+    };
+  }
+
+  const validationError = validateInput(bodyData);
+  if (validationError) {
+    return {
+      statusCode: 400,
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({ error: validationError }),
+    };
+  }
+
+  const { action, prompt, content, title, category } = bodyData;
+
   try {
-    const { action, prompt, content, title, category, part = 1 } =
-      JSON.parse(event.body);
+    // 🔥 Image generation (special flow)
+    if (action === "generate_image") {
+      const promptText = `Create cinematic illustration prompt: "${title}" ${content?.slice(0, 300)}`;
 
-    const API_KEY = process.env.GEMINI_API_KEY;
+      const encoded = encodeURIComponent(promptText);
+      const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=768&seed=${Date.now()}`;
 
-    if (!API_KEY) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: "Missing API Key" }),
-      };
-    }
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error("Image fetch failed");
 
-    let finalPrompt = "";
+      const buffer = await imgRes.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
 
-    // ===============================
-    // TEXT ACTIONS
-    // ===============================
-    switch (action) {
-      case "generate_story":
-        finalPrompt = `
-اكتب قصة طويلة (1500-2000 كلمة)
-
-Part ${part}
-
-${part === 1 ? "ابدأ القصة بقوة" : "اكمل بدون تكرار"}
-
-الفكرة:
-${prompt}
-
-مهم:
-- لا تختصر
-- استمر حتى النهاية
-`;
-        break;
-
-      case "expand_content":
-        finalPrompt = `وسع النص بالكامل:\n${content}`;
-        break;
-
-      case "improve_content":
-        finalPrompt = `حسّن النص:\n${content}`;
-        break;
-
-      case "suggest_titles":
-        finalPrompt = `اقترح 3 عناوين فقط:\n${content}`;
-        break;
-
-      case "suggest_category":
-        finalPrompt = `اختار تصنيف واحد فقط:\n${content}`;
-        break;
-
-      case "fix_grammar":
-        finalPrompt = `صحح النص فقط:\n${content}`;
-        break;
-
-      // ===============================
-      // IMAGE GENERATION (FIXED 🔥)
-      // ===============================
-      case "generate_image":
-        try {
-          const gemini = await safeFetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    parts: [
-                      {
-                        text: `
-You are a cinematic director.
-
-Extract ONE real visual scene from the story.
-
-STRICT RULES:
-- Must be a real moment from story
-- No imagination or symbolism
-- Must be visually filmable
-
-Return ONLY one image prompt.
-
-Include:
-- character(s)
-- exact action
-- location
-- lighting
-- camera angle
-
-Story Title: ${title}
-
-Story:
-${content.substring(0, 1200)}
-`
-                      },
-                    ],
-                  },
-                ],
-                generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 200,
-                },
-              }),
-            }
-          );
-
-          const imagePrompt =
-            gemini?.candidates?.[0]?.content?.parts?.[0]?.text || title;
-
-          // 🔥 FORCE REALISTIC STYLE (VERY IMPORTANT)
-          const finalImagePrompt =
-            imagePrompt +
-            ", cinematic realistic scene, natural lighting, real environment, story accurate, ultra detailed";
-
-          const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-            finalImagePrompt
-          )}?seed=${Date.now()}&model=flux`;
-
-          const imgRes = await fetch(imgUrl);
-          const buffer = await imgRes.arrayBuffer();
-
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-              success: true,
-              text: imagePrompt,
-              image: Buffer.from(buffer).toString("base64"),
-            }),
-          };
-        } catch (err) {
-          return {
-            statusCode: 500,
-            headers,
-            body: JSON.stringify({
-              error: "Image error: " + err.message,
-            }),
-          };
-        }
-
-      default:
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ error: "Invalid action" }),
-        };
-    }
-
-    // ===============================
-    // CACHE CHECK
-    // ===============================
-    const cacheKey = `${action}_${prompt}_${part}`;
-    if (cache.has(cacheKey)) {
       return {
         statusCode: 200,
-        headers,
-        body: JSON.stringify(cache.get(cacheKey)),
+        headers: DEFAULT_HEADERS,
+        body: JSON.stringify({
+          success: true,
+          text: promptText,
+          image: base64,
+        }),
       };
     }
 
-    // ===============================
-    // GEMINI CALL
-    // ===============================
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+    const finalPrompt = buildPrompt({ action, prompt, content, title, category });
 
-    const result = await safeFetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: finalPrompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 6000,
-        },
-      }),
-    });
-
-    const parts = result?.candidates?.[0]?.content?.parts || [];
-
-    let text = "";
-    for (const p of parts) {
-      if (p.text) text += p.text;
+    if (!finalPrompt) {
+      return {
+        statusCode: 400,
+        headers: DEFAULT_HEADERS,
+        body: JSON.stringify({ error: "Invalid action" }),
+      };
     }
 
-    const response = {
-      success: true,
-      text: text.trim(),
-      nextPart: part + 1,
-    };
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
-    cache.set(cacheKey, response);
+    const data = await callGemini(url, {
+      contents: [{ parts: [{ text: finalPrompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 4096,
+      },
+    });
+
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+
+    const text = parts
+      .map((p) => p.text || "")
+      .join("")
+      .trim();
 
     return {
       statusCode: 200,
-      headers,
-      body: JSON.stringify(response),
-    };
-
-  } catch (error) {
-    return {
-      statusCode: 500,
-      headers,
+      headers: DEFAULT_HEADERS,
       body: JSON.stringify({
-        success: false,
-        error: error.message,
-        fallback: true,
+        success: true,
+        text,
+      }),
+    };
+  } catch (err) {
+    console.error("🔥 Function Error:", err);
+
+    return {
+      statusCode: err.name === "AbortError" ? 504 : 500,
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({
+        error:
+          err.name === "AbortError"
+            ? "Request timeout"
+            : err.message || "Internal Server Error",
       }),
     };
   }
