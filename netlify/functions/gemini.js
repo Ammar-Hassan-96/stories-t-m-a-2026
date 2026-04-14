@@ -1,7 +1,5 @@
-// Netlify Function: Gemini AI Proxy - النسخة النهائية
-// ✅ تجنب Netlify 10s timeout
-// ✅ توليد صور ذكي مرتبط بمحتوى القصة
-// ✅ Fallback ذكي
+// Netlify Function: Gemini AI Proxy - Production Ready (Team Leader Edition)
+// Architecture: Modular, Fail-safe, Optimized for 10s execution limit, Hyper-realistic Image Gen.
 
 exports.handler = async (event) => {
   const headers = {
@@ -10,15 +8,23 @@ exports.handler = async (event) => {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 
-  if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers, body: "" };
-  if (event.httpMethod !== "POST") return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  // Handle CORS Preflight
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers, body: "" };
+  }
+
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  }
 
   try {
-    const { action, prompt, content, title, category } = JSON.parse(event.body);
+    const bodyParams = JSON.parse(event.body);
+    const { action, prompt, content, title, category } = bodyParams;
     const API_KEY = process.env.GEMINI_API_KEY;
 
     if (!API_KEY) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "GEMINI_API_KEY غير مُعدّ في Netlify" }) };
+      console.error("[Config Error] GEMINI_API_KEY is missing.");
+      return { statusCode: 500, headers, body: JSON.stringify({ error: "إعدادات الخادم غير مكتملة (Missing API Key)" }) };
     }
 
     const MODEL_STRATEGY = {
@@ -35,37 +41,39 @@ exports.handler = async (event) => {
 
     switch (action) {
       case "suggest_titles":
-        finalPrompt = `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
+        finalPrompt = `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون أي ترقيم، أو رموز، أو شرح إضافي.\n\nالقصة:\n${content}`;
         break;
       case "improve_content":
-        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب، مع الحفاظ على جميع الأحداث والشخصيات. لا تقصّر القصة. اجعلها أكثر تشويقاً. أرجع القصة المُحسَّنة فقط:\n\n${content}`;
+        finalPrompt = `أعد صياغة القصة التالية بأسلوب أدبي جذاب واحترافي، مع الحفاظ على جميع الأحداث والشخصيات. اجعلها أكثر تشويقاً وتماسكاً. أرجع النص المُحسَّن فقط بدون أي مقدمات:\n\n${content}`;
         break;
       case "expand_content":
-        finalPrompt = `وسّع القصة التالية لتصبح طويلة ومفصّلة (3000-4000 كلمة). أضف تفاصيل ووصف ومشاهد وحوارات، مع الحفاظ على الأحداث الأصلية. أرجع القصة الموسّعة فقط:\n\n${content}`;
+        finalPrompt = `وسّع القصة التالية لتصبح تفصيلية وعميقة. أضف تفاصيل دقيقة، وصفاً مكانياً وحسياً، ومشاهد وحوارات تخدم الحبكة، مع الحفاظ على المسار الأصلي للأحداث. أرجع القصة الموسّعة فقط:\n\n${content}`;
         break;
       case "continue_expand":
-        finalPrompt = `أكمل توسيع القصة التالية بإضافة 2000-3000 كلمة جديدة. أضف مشاهد فرعية، حوارات، ووصف حسي. حافظ على نفس الأسلوب. أرجع القصة كاملة (الأصل + الإضافات):\n\n${content}`;
+        finalPrompt = `أكمل القصة التالية بإضافة مشاهد فرعية جديدة، تطورات مفاجئة، وحوارات تزيد من التشويق. حافظ على نفس النبرة والأسلوب. أرجع القصة كاملة (الجزء الأصلي + التكملة) كنص واحد متصل:\n\n${content}`;
         break;
       case "fix_grammar":
-        finalPrompt = `صحّح الأخطاء الإملائية واللغوية في النص مع الحفاظ على الأسلوب. أرجع النص المُصحَّح فقط:\n\n${content}`;
+        finalPrompt = `أنت مدقق لغوي محترف. صحّح كافة الأخطاء الإملائية والنحوية وعلامات الترقيم في النص التالي مع الحفاظ على روح الأسلوب الأصلي. أرجع النص المُصحَّح فقط بدون أي تعليقات:\n\n${content}`;
         break;
       case "generate_story":
-        finalPrompt = `اكتب قصة طويلة ومفصّلة (3000-4000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة بأسلوب سردي جذاب. أرجع القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "أي تصنيف مناسب"}`;
+        finalPrompt = `اكتب قصة احترافية، مشوقة، ومفصّلة بناءً على الفكرة التالية. استخدم أسلوباً سردياً يشد الانتباه مع بناء جيد للشخصيات. أرجع نص القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "تصنيف عام"}`;
         break;
       case "suggest_category":
-        finalPrompt = `اقرأ القصة وحدد أنسب تصنيف من: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط:\n\n${content}`;
+        finalPrompt = `اقرأ القصة التالية وحدد أنسب تصنيف لها من هذه القائمة فقط: (drama, horror, kids, sci-fi, thriller, islamic, love). أرجع الكلمة الإنجليزية المعبرة عن التصنيف فقط، بدون أي إضافات:\n\n${content}`;
         break;
       case "generate_image":
         return await handleImageGeneration(API_KEY, title, content, category, headers);
       default:
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "action غير معروف" }) };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "الإجراء (action) المطلوب غير معروف." }) };
     }
 
     const modelsToTry = MODEL_STRATEGY[action] || ["gemini-2.5-flash"];
     let lastError = null;
 
     for (const model of modelsToTry) {
-      const result = await callGemini(API_KEY, model, finalPrompt);
+      // 8 seconds timeout for text generation to stay within Netlify limits
+      const result = await callGemini(API_KEY, model, finalPrompt, 8000, 4000); 
+      
       if (result.success) {
         return {
           statusCode: 200,
@@ -73,7 +81,10 @@ exports.handler = async (event) => {
           body: JSON.stringify({ success: true, text: result.text, image: null, model })
         };
       }
+      
       lastError = result.error;
+      console.warn(`[Model Fallback] ${model} failed:`, result.error);
+      
       if (!isRetryableError(result.error)) {
         return { statusCode: 500, headers, body: JSON.stringify({ error: result.error }) };
       }
@@ -82,13 +93,16 @@ exports.handler = async (event) => {
     return {
       statusCode: 429,
       headers,
-      body: JSON.stringify({ error: "فشلت كل الموديلات. " + (lastError || "") })
+      body: JSON.stringify({ error: "فشلت جميع المحاولات للاتصال بنماذج الذكاء الاصطناعي. السبب الأخير: " + (lastError || "") })
     };
 
   } catch (error) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
+    console.error("[Main Handler Error]:", error);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message || "حدث خطأ غير متوقع في الخادم." }) };
   }
 };
+
+// --- Helper Functions ---
 
 function isRetryableError(errorMsg) {
   if (!errorMsg) return false;
@@ -98,18 +112,18 @@ function isRetryableError(errorMsg) {
          msg.includes("exceeded") || msg.includes("not found") ||
          msg.includes("not supported") || msg.includes("404") ||
          msg.includes("not available") || msg.includes("deprecated") ||
-         msg.includes("timeout") || msg.includes("aborted");
+         msg.includes("timeout") || msg.includes("aborted") || msg.includes("fetch");
 }
 
-async function callGemini(apiKey, model, prompt) {
+async function callGemini(apiKey, model, prompt, timeoutMs = 8000, maxTokens = 4000) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.8, maxOutputTokens: 2500 }
+    generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens }
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8500);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -121,88 +135,87 @@ async function callGemini(apiKey, model, prompt) {
     clearTimeout(timeoutId);
 
     let data;
-    try { data = await response.json(); }
-    catch { return { success: false, error: `فشل قراءة الرد من ${model}` }; }
+    try { 
+      data = await response.json(); 
+    } catch { 
+      return { success: false, error: `فشل تحليل استجابة JSON من النموذج ${model}` }; 
+    }
 
     if (!response.ok) {
-      return { success: false, error: data.error?.message || `HTTP ${response.status}` };
+      return { success: false, error: data.error?.message || `HTTP Error: ${response.status}` };
     }
 
     const parts = data.candidates?.[0]?.content?.parts || [];
     let textResult = "";
-    for (const part of parts) if (part.text) textResult += part.text;
+    for (const part of parts) {
+      if (part.text) textResult += part.text;
+    }
 
     if (!textResult.trim()) {
       const finishReason = data.candidates?.[0]?.finishReason || "UNKNOWN";
-      return { success: false, error: `رد فاضي من ${model}. السبب: ${finishReason}` };
+      return { success: false, error: `الرد من ${model} كان فارغاً. سبب الإنهاء: ${finishReason}` };
     }
 
     return { success: true, text: textResult.trim() };
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
-      return { success: false, error: `timeout - ${model} أخد أكثر من 8 ثواني` };
+      return { success: false, error: `Timeout: استغرق ${model} أكثر من ${timeoutMs / 1000} ثوانٍ.` };
     }
     return { success: false, error: err.message };
   }
 }
 
-// 🎨 توليد صور ذكي ومرتبط بمحتوى القصة
+// 🎨 توليد صور ذكي وموجه للحصول على واقعية مطلقة (Hyper-Realistic)
 async function handleImageGeneration(apiKey, title, content, category, headers) {
   try {
     const categoryMap = {
-      horror: "dark horror scary atmospheric haunting gothic",
-      drama: "emotional dramatic cinematic storytelling",
-      kids: "colorful cheerful cartoon children friendly illustration",
-      "sci-fi": "futuristic space science fiction technology cyberpunk",
-      thriller: "suspenseful mysterious tense dramatic noir",
-      islamic: "spiritual islamic arabic architecture mosque calligraphy",
-      love: "romantic warm emotional heartfelt"
+      horror: "dark horror, terrifying, eerie atmosphere, shadows, cinematic lighting, photorealistic",
+      drama: "emotional, highly detailed, dramatic lighting, cinematic storytelling, sharp focus",
+      kids: "vibrant colors, 3D Pixar style, high quality render, cheerful, highly detailed",
+      "sci-fi": "futuristic, cyberpunk, epic scale, unreal engine 5 render, hyper-realistic, 8k resolution",
+      thriller: "suspenseful, mysterious, high contrast noir, cinematic mood, ultra detailed",
+      islamic: "majestic islamic architecture, beautiful soft lighting, highly detailed, serene",
+      love: "romantic, warm golden hour lighting, cinematic, soft focus, highly emotional"
     };
-    const styleHint = categoryMap[category] || "cinematic artistic detailed";
+    const styleHint = categoryMap[category] || "hyper-realistic, highly detailed, photorealistic, cinematic lighting, 8k resolution";
 
-    // الخطوة 1: نطلب من Gemini prompt إنجليزي دقيق يصف القصة
-    const translationPrompt = `You will receive an Arabic story. Create a detailed English image generation prompt (max 250 chars) that visualizes the MAIN scene or key moment.
-
+    // الخطوة 1: توليد Prompt احترافي (العمل كمخرج فني) - سرعة عالية
+    const translationPrompt = `Act as an expert Art Director. Read this Arabic story and write a highly detailed, hyper-realistic English image generation prompt (max 40 words) that visualizes the MAIN scene.
 Requirements:
-- Focus on specific characters, setting, and key visual elements
-- Mood: ${styleHint}
-- Style: highly detailed digital illustration, cinematic lighting, professional book cover quality
-- NO text, NO words, NO letters in image
-- Be specific about what's happening, who is there, where
+- Emphasize hyper-realism, photorealistic details, and cinematic lighting.
+- Mood/Style keywords: ${styleHint}
+- STRICTLY NO text, NO words, NO typography in the image.
+- Focus on what is physically visible.
+Story: ${content.substring(0, 800)}
+Return ONLY the English prompt. No introductions.`;
 
-Story title: "${title}"
-Story: ${content.substring(0, 1200)}
-
-Return ONLY the English prompt, nothing else.`;
-
-    const promptGenResult = await callGemini(apiKey, "gemini-2.5-flash", translationPrompt);
+    // استخدام مهلة قصيرة (2.5 ثانية) وعدد توكنز قليل لضمان السرعة الفائقة
+    const promptGenResult = await callGemini(apiKey, "gemini-2.5-flash", translationPrompt, 2500, 150);
 
     let imagePrompt;
-    if (promptGenResult.success && promptGenResult.text.length > 20) {
-      imagePrompt = promptGenResult.text
-        .replace(/^["']|["']$/g, '')
-        .replace(/\n/g, ' ')
-        .trim();
+    if (promptGenResult.success && promptGenResult.text.length > 15) {
+      imagePrompt = promptGenResult.text.replace(/^["']|["']$/g, '').replace(/\n/g, ' ').trim();
     } else {
-      imagePrompt = `${styleHint} illustration, detailed cinematic artwork, professional book cover, no text`;
+      imagePrompt = `A hyper-realistic cinematic scene representing: ${title}. ${styleHint}. Masterpiece, 8k, highly detailed, no text.`;
     }
 
-    console.log("[Image] Prompt:", imagePrompt.substring(0, 150));
+    console.log("[Image Gen] Flux Prompt:", imagePrompt);
 
-    // الخطوة 2: seed ثابت من العنوان لضمان نفس الصور مع نفس العنوان
-    const seed = Math.abs(title.split('').reduce((a, c) => ((a << 5) - a) + c.charCodeAt(0), 0)) & 0x7FFFFFFF;
+    // الخطوة 2: استدعاء Flux عبر Pollinations بمهلة 6.5 ثانية
+    // توليد Seed عشوائي ذكي لضمان تنوع الصور إذا تم طلبها لنفس القصة لاحقاً
+    const seed = Math.floor(Math.random() * 1000000); 
     const encodedPrompt = encodeURIComponent(imagePrompt);
-    // استخدام flux model - أحدث وأدق من Pollinations
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=true`;
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=768&nologo=true&seed=${seed}&model=flux&enhance=false`; // enhance=false لأننا كتبنا Prompt احترافي بالفعل
 
     const imgController = new AbortController();
-    const imgTimeout = setTimeout(() => imgController.abort(), 8000);
+    const imgTimeout = setTimeout(() => imgController.abort(), 6500);
 
     try {
       const imgRes = await fetch(pollinationsUrl, { signal: imgController.signal });
       clearTimeout(imgTimeout);
-      if (!imgRes.ok) throw new Error(`Pollinations: ${imgRes.status}`);
+      
+      if (!imgRes.ok) throw new Error(`Pollinations API Error: HTTP ${imgRes.status}`);
 
       const imgBuffer = await imgRes.arrayBuffer();
       const imgBase64 = Buffer.from(imgBuffer).toString('base64');
@@ -214,14 +227,15 @@ Return ONLY the English prompt, nothing else.`;
           success: true,
           text: imagePrompt,
           image: imgBase64,
-          model: "pollinations/flux"
+          model: "pollinations/flux (Hyper-Realistic Configuration)"
         })
       };
     } catch (imgErr) {
       clearTimeout(imgTimeout);
-      throw imgErr;
+      console.error("[Image Fetch Error]:", imgErr);
+      throw new Error(imgErr.name === 'AbortError' ? "Timeout: فشل جلب الصورة خلال الوقت المسموح." : imgErr.message);
     }
   } catch (err) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "خطأ في توليد الصورة: " + err.message }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "خطأ في معالجة وتوليد الصورة: " + err.message }) };
   }
 }
