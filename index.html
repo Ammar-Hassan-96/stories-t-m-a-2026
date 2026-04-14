@@ -637,9 +637,22 @@ function updateStats() {
   document.getElementById('stat-total').textContent = stories.length;
   document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
   document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
-  if (stories.length) {
-    const last = stories.reduce((a, b) => new Date(a.updated_at) > new Date(b.updated_at) ? a : b);
-    document.getElementById('stat-last').textContent = new Date(last.updated_at).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  
+  if (stories.length > 0) {
+    // العثور على أحدث تاريخ تحديث بين كل القصص
+    const latestStory = stories.reduce((prev, current) => {
+      const prevDate = new Date(prev.updated_at || 0);
+      const currentDate = new Date(current.updated_at || 0);
+      return (currentDate > prevDate) ? current : prev;
+    });
+
+    if (latestStory && latestStory.updated_at) {
+      const lastUpdateFormatted = new Date(latestStory.updated_at).toLocaleString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      document.getElementById('stat-last').textContent = lastUpdateFormatted;
+    }
   }
 }
 
