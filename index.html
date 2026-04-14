@@ -602,35 +602,29 @@ function renderStories() {
   const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
   
   list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
-    filtered.map(s => {
-      // تحويل التاريخ لصيغة مقروءة باللغة العربية
-      const updateDate = new Date(s.updated_at).toLocaleString('ar-EG', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+    // داخل وظيفة renderStories ابحث عن السطر الذي يبدأ بـ filtered.map
+filtered.map(s => {
+  // هذا السطر يضمن أخذ وقت التحديث الفعلي لكل قصة من قاعدة البيانات
+  const individualUpdate = s.updated_at ? new Date(s.updated_at) : new Date();
+  
+  const updateDate = individualUpdate.toLocaleString('ar-EG', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: 'numeric',
+    month: 'short'
+  });
 
-      return `
+  return `
     <div class="story-item">
-      <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
       <div class="story-info">
         <div class="story-title">${escapeHtml(s.title)}</div>
-        <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
-        <div style="margin-top:6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-          <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
-          <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
-          <span style="color:#90a4ae; font-size: 11px;">🔢 ترتيب: ${s.display_order}</span>
-          <span style="color:#d4af37; font-size: 11px; border-right: 1px solid #1e4976; padding-right: 8px;">🕒 تحديث: ${updateDate}</span>
+        <div style="margin-top:6px">
+          <span style="color:#d4af37; font-size: 11px;">🕒 تحديث: ${updateDate}</span>
         </div>
       </div>
-      <div class="story-actions">
-        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
-        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
       </div>
-    </div>
-  `}).join('');
+  `;
+}).join('');
 }
  
 function updateStats() {
