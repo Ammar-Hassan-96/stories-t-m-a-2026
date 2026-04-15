@@ -393,13 +393,13 @@ let GEMINI_KEY = localStorage.getItem('gemini_key') || '';
 
 // 🎯 موديلات Gemini حسب الـ action (بترتيب الأفضل)
 const GEMINI_MODELS = {
-  suggest_titles: ["gemini-2.0-flash"],
-  suggest_category: ["gemini-2.0-flash"],
-  fix_grammar: ["gemini-2.0-flash"],
-  improve_content: ["gemini-2.0-flash"],
-  expand_content: ["gemini-2.0-flash"],
-  continue_expand: ["gemini-2.0-flash"],
-  generate_story: ["gemini-2.0-flash"],
+  suggest_titles: ["gemini-2.5-flash"],
+  suggest_category: ["gemini-2.5-flash"],
+  fix_grammar: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  expand_content: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  continue_expand: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  generate_story: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
 };
 
 // 📝 Prompts
@@ -448,7 +448,7 @@ function ensureGeminiKey() {
 
 // 🚀 استدعاء Gemini مباشرة (بدون timeout - يشتغل من المتصفح مباشرة)
 async function callGeminiDirect(model, promptText) {
-const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
   const body = {
     contents: [{ parts: [{ text: promptText }] }],
     generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
@@ -492,7 +492,7 @@ async function callAI(payload) {
     }
 
     const promptText = buildPrompt(payload.action, payload);
-    const models = GEMINI_MODELS[payload.action] || ["gemini-2.0-flash"];
+    const models = GEMINI_MODELS[payload.action] || ["gemini-2.5-flash"];
     let lastError = null;
 
     for (const model of models) {
@@ -750,7 +750,7 @@ Begin the prompt now:`;
     
     let imagePrompt;
     try {
-      const generated = await callGeminiDirect("gemini-1.5-pro", directorPrompt);
+      const generated = await callGeminiDirect("gemini-2.5-flash", directorPrompt);
       imagePrompt = generated
         .replace(/^["'`*]+|["'`*]+$/g, '')
         .replace(/\n+/g, ' ')
