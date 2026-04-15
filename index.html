@@ -891,6 +891,8 @@ async function saveStory() {
       : await sb.from('stories').insert(payload);
     if (result.error) throw result.error;
     toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
+    // 🧹 امسح المسودة بعد الحفظ الناجح
+    localStorage.removeItem('story_draft');
     resetForm();
   } catch (e) {
     toast(e.message || 'حصل خطأ، حاول تاني', 'error');
@@ -900,6 +902,8 @@ async function saveStory() {
 function editStory(id) {
   const s = stories.find(x => x.id === id);
   if (!s) return;
+  // 🧹 امسح المسودة القديمة - القصة اللي بنعدلها محفوظة أصلاً
+  localStorage.removeItem('story_draft');
   document.getElementById('story-id').value = s.id;
   document.getElementById('story-title').value = s.title;
   document.getElementById('story-content').value = s.content;
@@ -988,19 +992,28 @@ let autoSaveTimer;
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
+    const content = document.getElementById('story-content').value;
+    const title = document.getElementById('story-title').value;
+    // مايحفظش مسودة فاضية
+    if (!content || content.trim().length < 10) {
+      localStorage.removeItem('story_draft');
+      return;
+    }
+    // مايحفظش مسودة لقصة بنعدلها (عشان مش يسألك تسترجعها بعدين)
+    if (document.getElementById('story-id').value) {
+      return;
+    }
     const draft = {
-      title: document.getElementById('story-title').value,
-      content: document.getElementById('story-content').value,
+      title,
+      content,
       author: document.getElementById('story-author').value,
       category: document.getElementById('story-category').value,
       timestamp: Date.now()
     };
-    if (draft.content) {
-      localStorage.setItem('story_draft', JSON.stringify(draft));
-      const indicator = document.getElementById('autosave-indicator');
-      indicator.classList.add('show');
-      setTimeout(() => indicator.classList.remove('show'), 2000);
-    }
+    localStorage.setItem('story_draft', JSON.stringify(draft));
+    const indicator = document.getElementById('autosave-indicator');
+    indicator.classList.add('show');
+    setTimeout(() => indicator.classList.remove('show'), 2000);
   }, 3000);
 }
 
@@ -1109,20 +1122,48 @@ document.addEventListener('keydown', (e) => {
 // 🔄 استرجاع المسودة عند فتح اللوحة
 function restoreDraft() {
   const draft = JSON.parse(localStorage.getItem('story_draft') || 'null');
-  if (!draft || !draft.content) return;
+  if (!draft || !draft.content || draft.content.trim().length < 10) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
   
-  // فقط لو المسودة جديدة (آخر يوم) ومش في تعديل قصة موجودة
+  // فقط لو المسودة جديدة (آخر يوم)
   const ageHours = (Date.now() - draft.timestamp) / (1000 * 60 * 60);
-  if (ageHours > 24) return;
+  if (ageHours > 24) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
   
-  if (!document.getElementById('story-id').value && !document.getElementById('story-content').value) {
-    if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
-      document.getElementById('story-title').value = draft.title || '';
-      document.getElementById('story-content').value = draft.content || '';
-      document.getElementById('story-author').value = draft.author || '';
-      if (draft.category) document.getElementById('story-category').value = draft.category;
-      updateLiveStats();
+  // لو في قصة فعلاً في النموذج، ما نستعرضش المسودة
+  if (document.getElementById('story-id').value || document.getElementById('story-content').value) {
+    return;
+  }
+  
+  // 🔍 افحص إن المسودة مش نفس محتوى أي قصة موجودة (يعني فعلاً اتحفظت بالفعل)
+  if (stories && stories.length > 0) {
+    const draftTitle = (draft.title || '').trim();
+    const draftContentStart = draft.content.trim().substring(0, 200);
+    const alreadySaved = stories.some(s => {
+      const sameTitle = s.title && s.title.trim() === draftTitle;
+      const sameContent = s.content && s.content.trim().substring(0, 200) === draftContentStart;
+      return sameTitle || sameContent;
+    });
+    if (alreadySaved) {
+      // القصة اتحفظت فعلاً، امسح المسودة
+      localStorage.removeItem('story_draft');
+      return;
     }
+  }
+  
+  if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
+    document.getElementById('story-title').value = draft.title || '';
+    document.getElementById('story-content').value = draft.content || '';
+    document.getElementById('story-author').value = draft.author || '';
+    if (draft.category) document.getElementById('story-category').value = draft.category;
+    updateLiveStats();
+  } else {
+    // لو قال إلغاء، امسح المسودة عشان مايطلبش تاني
+    localStorage.removeItem('story_draft');
   }
 }
 
