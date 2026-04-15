@@ -162,6 +162,7 @@
     <div class="ai-row">
       <button class="ai-btn" onclick="aiAction('improve_content')">📝 تحسين الصياغة</button>
       <button class="ai-btn" onclick="aiAction('expand_content')">📏 تطويل القصة</button>
+      <button class="ai-btn" onclick="aiAction('continue_expand')" style="background: linear-gradient(135deg, #e74c3c, #8e44ad);">🚀 تطويل إضافي</button>
       <button class="ai-btn" onclick="aiAction('fix_grammar')">✅ تصحيح لغوي</button>
       <button class="ai-btn" onclick="aiGenerateFromIdea()">💡 قصة من فكرة</button>
     </div>
@@ -184,6 +185,7 @@
     <input type="file" id="story-image" accept="image/*" onchange="previewImage(event)">
     <div class="ai-row">
       <button class="ai-btn" onclick="aiGenerateImage()">🎨 توليد صورة بالذكاء الاصطناعي</button>
+      <button class="ai-btn" onclick="openTTSModal()" style="background: linear-gradient(135deg, #16a085, #27ae60);">🎙️ تحويل لصوت MP3</button>
     </div>
     <img id="preview" class="preview-img" style="display:none">
     <input type="hidden" id="current-image-url">
@@ -300,6 +302,83 @@
       <p style="color:#90a4ae;font-size:13px;margin-bottom:10px">يحفظ آخر 10 نسخ من القصة الحالية تلقائياً</p>
       <div id="history-list" class="history-panel"></div>
       <button class="secondary" onclick="closeHistory()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- 🎙️ مودال TTS - Browser API -->
+  <div class="ai-modal" id="tts-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">🎙️ تحويل القصة لصوت</h3>
+      
+      <p style="color:#90a4ae;font-size:13px;margin-bottom:14px;background:#0a1929;padding:10px;border-radius:8px;border-right:3px solid #16a085;">
+        💡 <strong>تعمل بأصوات متصفحك</strong> — مجاني تماماً، بدون حدود. الأصوات اللي بتظهر هي اللي مثبّتة على جهازك.
+      </p>
+      
+      <label>اختر الصوت</label>
+      <select id="tts-voice" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+        <option value="">جاري تحميل الأصوات...</option>
+      </select>
+
+      <div class="row" style="margin-top:14px">
+        <div>
+          <label>السرعة</label>
+          <select id="tts-rate" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="0.7">بطيء جداً</option>
+            <option value="0.85">بطيء</option>
+            <option value="1.0" selected>عادي</option>
+            <option value="1.15">سريع</option>
+            <option value="1.3">سريع جداً</option>
+          </select>
+        </div>
+        <div>
+          <label>نغمة الصوت</label>
+          <select id="tts-pitch" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="0.7">أعمق</option>
+            <option value="0.85">أعمق قليلاً</option>
+            <option value="1.0" selected>عادي</option>
+            <option value="1.15">أحدّ قليلاً</option>
+            <option value="1.3">أحدّ</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:18px">
+        <button onclick="playTTS()" id="tts-play-btn" style="background: linear-gradient(135deg, #2980b9, #3498db);">▶️ تشغيل</button>
+        <button onclick="pauseResumeTTS()" id="tts-pause-btn" class="secondary" style="display:none">⏸️ إيقاف مؤقت</button>
+        <button onclick="showRecordSection()" class="secondary">⬇️ أحتاج ملف صوت للتنزيل</button>
+      </div>
+
+      <!-- قسم التسجيل (يظهر بناءً على طلب المستخدم) -->
+      <div id="tts-record-section" style="display:none; margin-top:18px; padding:16px; background:#0a1929; border-radius:10px; border:1px dashed #16a085;">
+        <strong style="color:#d4af37;display:block;margin-bottom:10px">🎙️ تسجيل وتنزيل ملف الصوت</strong>
+        <details style="background:#132f4c;padding:12px;border-radius:8px;margin-bottom:12px">
+          <summary style="cursor:pointer;color:#f39c12;font-size:13px;font-weight:bold;">📌 طريقة التسجيل (مهم اقرأها قبل البدء)</summary>
+          <p style="color:#b0bec5;font-size:12px;margin-top:8px;line-height:1.8">
+            المتصفح هيطلب إذن "مشاركة الشاشة" - دي طريقة تقنية لتسجيل الصوت:<br><br>
+            1️⃣ اضغط الزرار اللي تحت<br>
+            2️⃣ اختار <strong style="color:#fff">"Chrome Tab"</strong> أو <strong style="color:#fff">"علامة تبويب"</strong><br>
+            3️⃣ اختار التاب الحالي بتاع اللوحة<br>
+            4️⃣ <strong style="color:#f39c12">⚠️ في الأسفل فعّل: "Share tab audio" / "مشاركة صوت علامة التبويب"</strong><br>
+            5️⃣ اضغط "Share" / "مشاركة"<br>
+            6️⃣ التسجيل هيبدأ تلقائياً (متغلقش التاب)<br>
+            7️⃣ بعد ما يخلص الكلام، يظهر مشغل الصوت + زر التحميل
+          </p>
+        </details>
+        <button onclick="recordTTSAudio()" id="tts-record-btn" style="background: linear-gradient(135deg, #c0392b, #e74c3c); width:100%">🎙️ تسجيل وتنزيل ملف</button>
+      </div>
+
+      <!-- منطقة عرض الصوت المُسجّل -->
+      <div id="tts-result" style="display:none; margin-top:18px; padding:16px; background:#0a1929; border-radius:10px; border:1px solid #16a085;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;flex-wrap:wrap">
+          <span style="color:#16a085; font-size:20px;">✓</span>
+          <strong style="color:#d4af37;">تم التسجيل بنجاح</strong>
+          <span id="tts-info" style="color:#90a4ae; font-size:12px; margin-right:auto;"></span>
+        </div>
+        <audio id="tts-audio" controls style="width:100%; margin-bottom:10px;"></audio>
+        <button onclick="downloadTTS()" style="background: linear-gradient(135deg, #16a085, #27ae60);">⬇️ تحميل الملف</button>
+      </div>
+
+      <button class="secondary" onclick="closeTTSModal()" style="margin-top:14px">إغلاق</button>
     </div>
   </div>
 
@@ -499,28 +578,66 @@ async function aiAction(action) {
   
   const titles = {
     improve_content: '📝 جاري تحسين الصياغة...',
-    expand_content: '📏 جاري تطويل القصة...',
+    expand_content: '📏 جاري تطويل القصة... (قد يستغرق دقيقة)',
+    continue_expand: '🚀 جاري إضافة محتوى إضافي... (قد يستغرق دقيقة)',
     fix_grammar: '✅ جاري التصحيح اللغوي...'
   };
   
-  showLoading(titles[action]);
+  showLoading(titles[action] || 'جاري المعالجة...');
   try {
     const data = await callAI({ action, content });
     pendingAIText = data.text;
+    
+    // إحصائيات النتيجة
+    const newWords = data.text.trim().split(/\s+/).filter(Boolean).length;
+    const oldWords = content.trim().split(/\s+/).filter(Boolean).length;
+    const diff = newWords - oldWords;
+    const diffSign = diff > 0 ? '+' : '';
+    const diffColor = diff > 0 ? '#4caf50' : (diff < 0 ? '#f44336' : '#90a4ae');
+    const modelInfo = data.model ? `<span style="font-size:11px;color:#90a4ae;margin-right:auto">⚙️ ${data.model}</span>` : '';
+    
+    // زر "تطبيق + تطويل إضافي" يظهر فقط بعد التطويل
+    const showExtraExpand = (action === 'expand_content' || action === 'continue_expand');
+    const extraBtn = showExtraExpand 
+      ? '<button onclick="applyAndContinueExpand()" style="background:linear-gradient(135deg,#e74c3c,#8e44ad);color:#fff;width:auto">🚀 تطبيق + تطويل إضافي</button>' 
+      : '';
+    
     const html = 
-      '<p style="color:#90a4ae;margin-bottom:10px">النتيجة:</p>' +
-      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + 
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<strong style="color:#d4af37">' + newWords.toLocaleString('ar-EG') + ' كلمة</strong>' +
+      '<span style="color:#90a4ae;font-size:13px">(قبل: ' + oldWords.toLocaleString('ar-EG') + ' • التغيير: <span style="color:' + diffColor + ';font-weight:bold">' + diffSign + diff.toLocaleString('ar-EG') + '</span>)</span>' +
+      modelInfo +
+      '</div>' +
+      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:350px;overflow-y:auto;white-space:pre-wrap;line-height:1.8">' + 
       escapeHtml(data.text) + 
       '</div>' +
-      '<div style="display:flex;gap:10px;margin-top:14px">' +
-      '<button onclick="applyPendingText()">✓ تطبيق</button>' +
-      '<button class="secondary" onclick="closeAIModal()">إلغاء</button>' +
+      '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">' +
+      '<button onclick="applyPendingText()" style="width:auto">✓ تطبيق</button>' +
+      extraBtn +
+      '<button class="secondary" onclick="closeAIModal()" style="width:auto">إلغاء</button>' +
       '</div>';
     showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
   } catch (e) {
     toast(e.message || 'حصل خطأ، حاول تاني', 'error');
     closeAIModal();
   }
+}
+
+// 🚀 تطبيق النتيجة وتطويل إضافي تلقائي
+async function applyAndContinueExpand() {
+  if (!pendingAIText) return;
+  // احفظ النص في History قبل التطبيق
+  const oldText = document.getElementById('story-content').value;
+  if (oldText && oldText !== pendingAIText) {
+    saveToHistory('expand_content', oldText, pendingAIText);
+  }
+  document.getElementById('story-content').value = pendingAIText;
+  pendingAIText = '';
+  updateLiveStats();
+  closeAIModal();
+  toast('تم التطبيق ✓ بدء التطويل الإضافي...', 'success');
+  // استنى نصف ثانية ثم شغّل التطويل الإضافي
+  setTimeout(() => aiAction('continue_expand'), 500);
 }
 
 // توليد قصة من فكرة
@@ -580,18 +697,18 @@ async function aiSuggestCategory() {
 }
 
 // توليد صورة
-// 🎨 توليد صورة مباشرة من المتصفح (بدون Netlify)
+// 🎨 توليد صورة احترافية - Backend بـ Gemini Director + Pollinations
 async function aiGenerateImage() {
   const title = document.getElementById('story-title').value.trim();
   const content = document.getElementById('story-content').value.trim();
   const category = document.getElementById('story-category').value;
+  const style = localStorage.getItem('image_style') || 'cinematic';
 
   if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
   
-  showLoading('🎨 جاري تحليل القصة وتوليد مشهد سينمائي... (قد يستغرق 20 ثانية)');
+  showLoading('🎨 جاري تحليل القصة وتوليد مشهد سينمائي... (10-30 ثانية)');
   
   try {
-    // إرسال الطلب لـ Netlify Function بدلاً من التوليد المحلي الضعيف
     const res = await fetch(AI_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -599,14 +716,15 @@ async function aiGenerateImage() {
         action: 'generate_image', 
         title, 
         content, 
-        category 
+        category,
+        style
       })
     });
 
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.error || "فشل توليد الصورة");
 
-    // تحويل الـ base64 القادم من السيرفر إلى ملف لرفعه على Supabase
+    // تحويل base64 لـ blob
     const byteCharacters = atob(data.image);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -614,9 +732,9 @@ async function aiGenerateImage() {
     }
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], {type: 'image/png'});
-    const file = new File([blob], `ai_cinematic_${Date.now()}.png`, { type: 'image/png' });
+    const file = new File([blob], `ai_${style}_${Date.now()}.png`, { type: 'image/png' });
 
-    // رفع على Supabase كالمعتاد
+    // رفع على Supabase
     const imageUrl = await uploadImage(file);
     document.getElementById('current-image-url').value = imageUrl;
     const img = document.getElementById('preview');
@@ -624,9 +742,10 @@ async function aiGenerateImage() {
     img.style.display = 'block';
     
     closeAIModal();
-    toast('✓ تم توليد صورة سينمائية تعبر عن روح القصة', 'success');
+    const styleNames = { cinematic: 'سينمائي', photorealistic: 'واقعي', anime: 'أنمي', digital_art: 'رسم رقمي', dark_fantasy: 'خيال داكن' };
+    toast(`✓ تم توليد صورة ${styleNames[style] || style}`, 'success');
   } catch (e) {
-    console.error(e);
+    console.error('[Image Gen]', e);
     toast(e.message || 'حصل خطأ في التوليد', 'error');
     closeAIModal();
   }
@@ -826,6 +945,8 @@ async function saveStory() {
       : await sb.from('stories').insert(payload);
     if (result.error) throw result.error;
     toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
+    // 🧹 امسح المسودة بعد الحفظ الناجح
+    localStorage.removeItem('story_draft');
     resetForm();
   } catch (e) {
     toast(e.message || 'حصل خطأ، حاول تاني', 'error');
@@ -835,6 +956,8 @@ async function saveStory() {
 function editStory(id) {
   const s = stories.find(x => x.id === id);
   if (!s) return;
+  // 🧹 امسح المسودة القديمة - القصة اللي بنعدلها محفوظة أصلاً
+  localStorage.removeItem('story_draft');
   document.getElementById('story-id').value = s.id;
   document.getElementById('story-title').value = s.title;
   document.getElementById('story-content').value = s.content;
@@ -923,19 +1046,28 @@ let autoSaveTimer;
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
+    const content = document.getElementById('story-content').value;
+    const title = document.getElementById('story-title').value;
+    // مايحفظش مسودة فاضية
+    if (!content || content.trim().length < 10) {
+      localStorage.removeItem('story_draft');
+      return;
+    }
+    // مايحفظش مسودة لقصة بنعدلها (عشان مش يسألك تسترجعها بعدين)
+    if (document.getElementById('story-id').value) {
+      return;
+    }
     const draft = {
-      title: document.getElementById('story-title').value,
-      content: document.getElementById('story-content').value,
+      title,
+      content,
       author: document.getElementById('story-author').value,
       category: document.getElementById('story-category').value,
       timestamp: Date.now()
     };
-    if (draft.content) {
-      localStorage.setItem('story_draft', JSON.stringify(draft));
-      const indicator = document.getElementById('autosave-indicator');
-      indicator.classList.add('show');
-      setTimeout(() => indicator.classList.remove('show'), 2000);
-    }
+    localStorage.setItem('story_draft', JSON.stringify(draft));
+    const indicator = document.getElementById('autosave-indicator');
+    indicator.classList.add('show');
+    setTimeout(() => indicator.classList.remove('show'), 2000);
   }, 3000);
 }
 
@@ -1044,76 +1176,52 @@ document.addEventListener('keydown', (e) => {
 // 🔄 استرجاع المسودة عند فتح اللوحة
 function restoreDraft() {
   const draft = JSON.parse(localStorage.getItem('story_draft') || 'null');
-  if (!draft || !draft.content) return;
+  if (!draft || !draft.content || draft.content.trim().length < 10) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
   
-  // فقط لو المسودة جديدة (آخر يوم) ومش في تعديل قصة موجودة
+  // فقط لو المسودة جديدة (آخر يوم)
   const ageHours = (Date.now() - draft.timestamp) / (1000 * 60 * 60);
-  if (ageHours > 24) return;
+  if (ageHours > 24) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
   
-  if (!document.getElementById('story-id').value && !document.getElementById('story-content').value) {
-    if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
-      document.getElementById('story-title').value = draft.title || '';
-      document.getElementById('story-content').value = draft.content || '';
-      document.getElementById('story-author').value = draft.author || '';
-      if (draft.category) document.getElementById('story-category').value = draft.category;
-      updateLiveStats();
+  // لو في قصة فعلاً في النموذج، ما نستعرضش المسودة
+  if (document.getElementById('story-id').value || document.getElementById('story-content').value) {
+    return;
+  }
+  
+  // 🔍 افحص إن المسودة مش نفس محتوى أي قصة موجودة (يعني فعلاً اتحفظت بالفعل)
+  if (stories && stories.length > 0) {
+    const draftTitle = (draft.title || '').trim();
+    const draftContentStart = draft.content.trim().substring(0, 200);
+    const alreadySaved = stories.some(s => {
+      const sameTitle = s.title && s.title.trim() === draftTitle;
+      const sameContent = s.content && s.content.trim().substring(0, 200) === draftContentStart;
+      return sameTitle || sameContent;
+    });
+    if (alreadySaved) {
+      // القصة اتحفظت فعلاً، امسح المسودة
+      localStorage.removeItem('story_draft');
+      return;
     }
   }
-}
-
-// 🎨 تحديث aiGenerateImage يستخدم الـ style المحفوظ
-const originalAiGenerateImage = window.aiGenerateImage;
-async function aiGenerateImageWithStyle() {
-  const title = document.getElementById('story-title').value.trim();
-  const content = document.getElementById('story-content').value.trim();
-  if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
-
-  showLoading('🎨 جاري توليد الصورة... (30-60 ثانية)');
-  try {
-    const category = document.getElementById('story-category').value;
-    const style = localStorage.getItem('image_style') || 'cinematic';
-    
-    // استدعاء Backend (يستخدم Gemini Director + Pollinations Flux)
-    const res = await fetch(AI_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'generate_image', title, content, category, style })
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || 'فشل التوليد');
-    
-    // تحويل base64 للملف ورفعه على Supabase
-    const byteChars = atob(data.image);
-    const byteArray = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArray], { type: 'image/png' });
-    const file = new File([blob], `ai_${Date.now()}.png`, { type: 'image/png' });
-    
-    const imageUrl = await uploadImage(file);
-    document.getElementById('current-image-url').value = imageUrl;
-    const img = document.getElementById('preview');
-    img.src = imageUrl;
-    img.style.display = 'block';
-    
-    closeAIModal();
-    toast(`✓ تم توليد الصورة (${data.style})`, 'success');
-  } catch (e) {
-    toast(e.message || 'حصل خطأ', 'error');
-    closeAIModal();
+  
+  if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
+    document.getElementById('story-title').value = draft.title || '';
+    document.getElementById('story-content').value = draft.content || '';
+    document.getElementById('story-author').value = draft.author || '';
+    if (draft.category) document.getElementById('story-category').value = draft.category;
+    updateLiveStats();
+  } else {
+    // لو قال إلغاء، امسح المسودة عشان مايطلبش تاني
+    localStorage.removeItem('story_draft');
   }
 }
-// استبدال الـ function القديمة
-window.aiGenerateImage = aiGenerateImageWithStyle;
 
-// 🎯 Hook على aiAction عشان يحفظ في History
-const _originalAiAction = window.aiAction;
-window.aiAction = async function(action) {
-  const oldText = document.getElementById('story-content').value;
-  await _originalAiAction.call(this, action);
-  // الحفظ في History هيتم في applyPendingText
-};
-
-// تعديل applyPendingText يحفظ في history
+// 🎯 تعديل applyPendingText يحفظ في History تلقائياً
 const _originalApplyPendingText = window.applyPendingText;
 window.applyPendingText = function() {
   const oldText = document.getElementById('story-content').value;
@@ -1130,6 +1238,371 @@ setTimeout(() => {
   updateLiveStats();
   setTimeout(restoreDraft, 1500); // بعد ما اللوحة تفتح
 }, 500);
+
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// 🎙️ TEXT-TO-SPEECH - Browser Native (Simple & Reliable)
+// ═══════════════════════════════════════════════════════════
+
+let ttsState = {
+  voices: [],
+  utterance: null,
+  isPlaying: false,
+  isPaused: false,
+  recordedBlob: null,
+  recordedUrl: null
+};
+
+// تحميل الأصوات المتاحة من المتصفح
+function loadBrowserVoices() {
+  if (!('speechSynthesis' in window)) return;
+  
+  const voices = window.speechSynthesis.getVoices();
+  // فلترة الأصوات العربية أولاً، ثم نضيف الباقي لو فاضي
+  let arabicVoices = voices.filter(v => 
+    v.lang.toLowerCase().startsWith('ar') || 
+    v.name.toLowerCase().includes('arab')
+  );
+  
+  ttsState.voices = arabicVoices.length > 0 ? arabicVoices : voices;
+  populateVoiceDropdown();
+}
+
+function populateVoiceDropdown() {
+  const select = document.getElementById('tts-voice');
+  if (!select) return;
+  
+  if (ttsState.voices.length === 0) {
+    select.innerHTML = '<option value="">⚠️ لا توجد أصوات متاحة في متصفحك</option>';
+    return;
+  }
+  
+  // تجميع حسب اللغة
+  const langNames = {
+    'ar-EG': '🇪🇬 مصري', 'ar-SA': '🇸🇦 سعودي', 'ar-AE': '🇦🇪 إماراتي',
+    'ar-JO': '🇯🇴 أردني', 'ar-LB': '🇱🇧 لبناني', 'ar-MA': '🇲🇦 مغربي',
+    'ar-DZ': '🇩🇿 جزائري', 'ar-TN': '🇹🇳 تونسي', 'ar-IQ': '🇮🇶 عراقي',
+    'ar-KW': '🇰🇼 كويتي', 'ar-QA': '🇶🇦 قطري', 'ar-BH': '🇧🇭 بحريني',
+    'ar-OM': '🇴🇲 عماني', 'ar-YE': '🇾🇪 يمني', 'ar-LY': '🇱🇾 ليبي',
+    'ar-SY': '🇸🇾 سوري', 'ar-PS': '🇵🇸 فلسطيني', 'ar-XA': '🌍 عربي عام',
+    'ar': '🌍 عربي'
+  };
+  
+  const grouped = {};
+  ttsState.voices.forEach(v => {
+    const key = v.lang;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(v);
+  });
+  
+  // ترتيب: مصري -> سعودي -> الباقي
+  const sortedLangs = Object.keys(grouped).sort((a, b) => {
+    const order = ['ar-EG', 'ar-SA', 'ar-AE', 'ar-JO', 'ar-LB', 'ar-MA'];
+    const aIdx = order.indexOf(a);
+    const bIdx = order.indexOf(b);
+    if (aIdx !== -1 && bIdx === -1) return -1;
+    if (aIdx === -1 && bIdx !== -1) return 1;
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    return a.localeCompare(b);
+  });
+  
+  let html = '';
+  sortedLangs.forEach(lang => {
+    const groupName = langNames[lang] || `🌍 ${lang}`;
+    html += `<optgroup label="${groupName}">`;
+    grouped[lang].forEach(v => {
+      const localBadge = v.localService ? ' ⚡' : ' ☁️';
+      html += `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}${localBadge}</option>`;
+    });
+    html += `</optgroup>`;
+  });
+  
+  select.innerHTML = html;
+  
+  const savedVoice = localStorage.getItem('tts_voice');
+  if (savedVoice && ttsState.voices.find(v => v.name === savedVoice)) {
+    select.value = savedVoice;
+  }
+}
+
+// تحميل الأصوات (لازم نستنى عشان voiceschanged)
+if ('speechSynthesis' in window) {
+  loadBrowserVoices();
+  window.speechSynthesis.onvoiceschanged = loadBrowserVoices;
+}
+
+function openTTSModal() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  if (!('speechSynthesis' in window)) {
+    return toast('متصفحك لا يدعم تحويل النص لصوت', 'error');
+  }
+  
+  // تحديث قائمة الأصوات
+  loadBrowserVoices();
+  
+  // إخفاء القسم القديم
+  document.getElementById('tts-result').style.display = 'none';
+  document.getElementById('tts-record-section').style.display = 'none';
+  
+  // إعادة ضبط الأزرار
+  document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+  document.getElementById('tts-pause-btn').style.display = 'none';
+  
+  document.getElementById('tts-modal').classList.add('show');
+}
+
+function closeTTSModal() {
+  stopTTSPlayback();
+  document.getElementById('tts-modal').classList.remove('show');
+  if (ttsState.recordedUrl) {
+    URL.revokeObjectURL(ttsState.recordedUrl);
+    ttsState.recordedUrl = null;
+    ttsState.recordedBlob = null;
+  }
+}
+
+// ▶️ تشغيل الصوت
+function playTTS() {
+  if (ttsState.isPlaying) {
+    // لو شغال، نوقفه
+    stopTTSPlayback();
+    return;
+  }
+  
+  const text = document.getElementById('story-content').value.trim();
+  if (!text) return toast('النص فارغ', 'error');
+  
+  const voiceName = document.getElementById('tts-voice').value;
+  const voice = ttsState.voices.find(v => v.name === voiceName);
+  if (!voice) return toast('اختر صوت أولاً', 'error');
+  
+  localStorage.setItem('tts_voice', voiceName);
+  
+  // امسح أي قراءة سابقة
+  window.speechSynthesis.cancel();
+  
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = voice;
+  utterance.lang = voice.lang;
+  utterance.rate = parseFloat(document.getElementById('tts-rate').value) || 1.0;
+  utterance.pitch = parseFloat(document.getElementById('tts-pitch').value) || 1.0;
+  utterance.volume = 1.0;
+  
+  ttsState.utterance = utterance;
+  ttsState.isPlaying = true;
+  ttsState.isPaused = false;
+  
+  utterance.onstart = () => {
+    document.getElementById('tts-play-btn').textContent = '⏹️ إيقاف';
+    document.getElementById('tts-pause-btn').style.display = 'inline-block';
+    document.getElementById('tts-pause-btn').textContent = '⏸️ إيقاف مؤقت';
+  };
+  
+  utterance.onend = () => {
+    ttsState.isPlaying = false;
+    ttsState.isPaused = false;
+    document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+    document.getElementById('tts-pause-btn').style.display = 'none';
+  };
+  
+  utterance.onerror = (e) => {
+    ttsState.isPlaying = false;
+    ttsState.isPaused = false;
+    document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+    document.getElementById('tts-pause-btn').style.display = 'none';
+    if (e.error !== 'interrupted' && e.error !== 'canceled') {
+      toast('خطأ: ' + e.error, 'error');
+    }
+  };
+  
+  window.speechSynthesis.speak(utterance);
+}
+
+function pauseResumeTTS() {
+  if (!ttsState.isPlaying) return;
+  
+  if (ttsState.isPaused) {
+    window.speechSynthesis.resume();
+    ttsState.isPaused = false;
+    document.getElementById('tts-pause-btn').textContent = '⏸️ إيقاف مؤقت';
+  } else {
+    window.speechSynthesis.pause();
+    ttsState.isPaused = true;
+    document.getElementById('tts-pause-btn').textContent = '▶️ استئناف';
+  }
+}
+
+function stopTTSPlayback() {
+  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    window.speechSynthesis.cancel();
+  }
+  ttsState.isPlaying = false;
+  ttsState.isPaused = false;
+  ttsState.utterance = null;
+  
+  const playBtn = document.getElementById('tts-play-btn');
+  const pauseBtn = document.getElementById('tts-pause-btn');
+  if (playBtn) playBtn.textContent = '▶️ تشغيل';
+  if (pauseBtn) pauseBtn.style.display = 'none';
+}
+
+// 🎙️ تسجيل الصوت كملف للتنزيل
+async function recordTTSAudio() {
+  const text = document.getElementById('story-content').value.trim();
+  if (!text) return toast('النص فارغ', 'error');
+  
+  const voiceName = document.getElementById('tts-voice').value;
+  const voice = ttsState.voices.find(v => v.name === voiceName);
+  if (!voice) return toast('اختر صوت أولاً', 'error');
+  
+  // أولاً امسح أي قراءة شغالة
+  stopTTSPlayback();
+  
+  const recordBtn = document.getElementById('tts-record-btn');
+  recordBtn.disabled = true;
+  recordBtn.textContent = '⏳ جاري التحضير...';
+  
+  let stream = null;
+  let recorder = null;
+  
+  try {
+    // اطلب إذن مشاركة الشاشة مع الصوت
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: 1, height: 1 }, // أقل دقة عشان نوفر موارد
+      audio: true,
+      preferCurrentTab: true
+    });
+    
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      stream.getTracks().forEach(t => t.stop());
+      toast('⚠️ لازم تختار "Share tab audio" - حاول تاني', 'error');
+      return;
+    }
+    
+    // أوقف video tracks (مش محتاجينها)
+    stream.getVideoTracks().forEach(t => t.stop());
+    
+    // اعمل audio-only stream
+    const audioStream = new MediaStream(audioTracks);
+    
+    // اختار أفضل format
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/mp4';
+    
+    recorder = new MediaRecorder(audioStream, { 
+      mimeType, 
+      audioBitsPerSecond: 128000 
+    });
+    
+    const chunks = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+    
+    const recordingPromise = new Promise((resolve, reject) => {
+      recorder.onstop = () => {
+        audioStream.getTracks().forEach(t => t.stop());
+        if (chunks.length === 0) {
+          reject(new Error('لم يتم تسجيل أي صوت'));
+        } else {
+          const blob = new Blob(chunks, { type: mimeType });
+          resolve(blob);
+        }
+      };
+      recorder.onerror = (e) => {
+        audioStream.getTracks().forEach(t => t.stop());
+        reject(new Error('خطأ في التسجيل'));
+      };
+    });
+    
+    recorder.start(100);
+    recordBtn.textContent = '🔴 جاري التسجيل... (لا تغلق التاب)';
+    
+    // ابدأ تشغيل الصوت
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+    utterance.rate = parseFloat(document.getElementById('tts-rate').value) || 1.0;
+    utterance.pitch = parseFloat(document.getElementById('tts-pitch').value) || 1.0;
+    
+    const speechPromise = new Promise((resolve, reject) => {
+      utterance.onend = resolve;
+      utterance.onerror = (e) => reject(new Error('خطأ في القراءة: ' + e.error));
+    });
+    
+    window.speechSynthesis.speak(utterance);
+    
+    // استنى لما يخلص الكلام
+    await speechPromise;
+    
+    // استنى ثانية إضافية عشان آخر صوت يتسجل
+    await new Promise(r => setTimeout(r, 1000));
+    
+    // وقف التسجيل
+    recorder.stop();
+    
+    // استلم الـ blob
+    const blob = await recordingPromise;
+    
+    // اعرض النتيجة
+    if (ttsState.recordedUrl) URL.revokeObjectURL(ttsState.recordedUrl);
+    ttsState.recordedBlob = blob;
+    ttsState.recordedUrl = URL.createObjectURL(blob);
+    
+    const audio = document.getElementById('tts-audio');
+    audio.src = ttsState.recordedUrl;
+    
+    const sizeKB = (blob.size / 1024).toFixed(0);
+    const ext = mimeType.includes('mp4') ? 'M4A' : 'WebM';
+    document.getElementById('tts-info').textContent = `${voice.name} • ${sizeKB} KB • ${ext}`;
+    
+    document.getElementById('tts-result').style.display = 'block';
+    toast('✓ تم التسجيل بنجاح', 'success');
+    
+  } catch (err) {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (err.name === 'NotAllowedError') {
+      toast('لم يتم منح إذن المشاركة', 'error');
+    } else {
+      toast('خطأ: ' + err.message, 'error');
+    }
+    console.error('[TTS Record]', err);
+  } finally {
+    recordBtn.disabled = false;
+    recordBtn.textContent = '🎙️ تسجيل وتنزيل ملف';
+  }
+}
+
+function showRecordSection() {
+  document.getElementById('tts-record-section').style.display = 'block';
+}
+
+function downloadTTS() {
+  if (!ttsState.recordedUrl) return toast('لا يوجد ملف للتحميل', 'error');
+  
+  const ext = (document.getElementById('tts-info').textContent.includes('M4A')) ? 'm4a' : 'webm';
+  const title = document.getElementById('story-title').value.trim() || 'story';
+  const filename = title
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '_')
+    .substring(0, 60) + '.' + ext;
+  
+  const a = document.createElement('a');
+  a.href = ttsState.recordedUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  
+  toast('✓ تم بدء التحميل', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
 
 init();
 </script>
