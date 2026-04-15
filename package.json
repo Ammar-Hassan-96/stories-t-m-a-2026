@@ -1,0 +1,8 @@
+{
+  "name": "stories-admin",
+  "version": "1.0.0",
+  "description": "Stories Admin Panel with TTS",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -184,6 +184,7 @@
     <input type="file" id="story-image" accept="image/*" onchange="previewImage(event)">
     <div class="ai-row">
       <button class="ai-btn" onclick="aiGenerateImage()">🎨 توليد صورة بالذكاء الاصطناعي</button>
+      <button class="ai-btn" onclick="openTTSModal()" style="background: linear-gradient(135deg, #16a085, #27ae60);">🎙️ تحويل لصوت MP3</button>
     </div>
     <img id="preview" class="preview-img" style="display:none">
     <input type="hidden" id="current-image-url">
@@ -300,6 +301,70 @@
       <p style="color:#90a4ae;font-size:13px;margin-bottom:10px">يحفظ آخر 10 نسخ من القصة الحالية تلقائياً</p>
       <div id="history-list" class="history-panel"></div>
       <button class="secondary" onclick="closeHistory()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- 🎙️ مودال TTS -->
+  <div class="ai-modal" id="tts-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">🎙️ تحويل القصة لصوت MP3</h3>
+      
+      <label>اختر الصوت</label>
+      <select id="tts-voice" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+        <optgroup label="🇪🇬 مصري">
+          <option value="ar-EG-SalmaNeural" selected>سلمى (أنثى)</option>
+          <option value="ar-EG-ShakirNeural">شاكر (ذكر)</option>
+        </optgroup>
+        <optgroup label="🇸🇦 سعودي">
+          <option value="ar-SA-ZariyahNeural">زارية (أنثى)</option>
+          <option value="ar-SA-HamedNeural">حامد (ذكر)</option>
+        </optgroup>
+        <optgroup label="🇸🇾 سوري">
+          <option value="ar-SY-AmanyNeural">أماني (أنثى)</option>
+          <option value="ar-SY-LaithNeural">ليث (ذكر)</option>
+        </optgroup>
+      </select>
+
+      <div class="row" style="margin-top:14px">
+        <div>
+          <label>السرعة</label>
+          <select id="tts-rate" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="-20%">بطيء</option>
+            <option value="+0%" selected>عادي</option>
+            <option value="+15%">سريع</option>
+            <option value="+30%">سريع جداً</option>
+          </select>
+        </div>
+        <div>
+          <label>نغمة الصوت</label>
+          <select id="tts-pitch" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="-5Hz">أعمق</option>
+            <option value="+0Hz" selected>عادي</option>
+            <option value="+5Hz">أحدّ</option>
+          </select>
+        </div>
+      </div>
+
+      <button onclick="generateTTS()" id="tts-generate-btn" style="margin-top:18px">🎙️ توليد الصوت</button>
+
+      <!-- منطقة عرض الصوت -->
+      <div id="tts-result" style="display:none; margin-top:18px; padding:16px; background:#0a1929; border-radius:10px; border:1px solid #16a085;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+          <span style="color:#16a085; font-size:20px;">✓</span>
+          <strong style="color:#d4af37;">تم توليد الصوت بنجاح</strong>
+          <span id="tts-info" style="color:#90a4ae; font-size:12px; margin-right:auto;"></span>
+        </div>
+        <audio id="tts-audio" controls style="width:100%; margin-bottom:10px;"></audio>
+        <button onclick="downloadTTS()" style="background: linear-gradient(135deg, #16a085, #27ae60);">⬇️ تحميل MP3</button>
+      </div>
+
+      <!-- منطقة التقدم للنصوص الطويلة -->
+      <div id="tts-progress" style="display:none; margin-top:14px;">
+        <div class="progress-bar"><div class="fill" id="tts-progress-fill"></div></div>
+        <small id="tts-progress-text" style="color:#90a4ae; display:block; margin-top:4px;"></small>
+      </div>
+
+      <button class="secondary" onclick="closeTTSModal()" style="margin-top:14px">إغلاق</button>
     </div>
   </div>
 
@@ -1130,6 +1195,208 @@ setTimeout(() => {
   updateLiveStats();
   setTimeout(restoreDraft, 1500); // بعد ما اللوحة تفتح
 }, 500);
+
+// ═══════════════════════════════════════════════════════════
+// 🎙️ TEXT-TO-SPEECH - Edge TTS Integration
+// ═══════════════════════════════════════════════════════════
+
+const TTS_ENDPOINT = "/.netlify/functions/tts";
+const TTS_MAX_CHARS = 4000; // حد كل chunk
+let ttsAudioBlobUrl = null;
+let ttsCurrentStoryTitle = "";
+
+function openTTSModal() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  ttsCurrentStoryTitle = document.getElementById('story-title').value.trim() || 'story';
+  
+  // إخفاء النتائج القديمة
+  document.getElementById('tts-result').style.display = 'none';
+  document.getElementById('tts-progress').style.display = 'none';
+  
+  // استرجاع الصوت المحفوظ
+  const savedVoice = localStorage.getItem('tts_voice');
+  if (savedVoice) document.getElementById('tts-voice').value = savedVoice;
+  
+  document.getElementById('tts-modal').classList.add('show');
+}
+
+function closeTTSModal() {
+  document.getElementById('tts-modal').classList.remove('show');
+  // تنظيف blob URL القديم
+  if (ttsAudioBlobUrl) {
+    URL.revokeObjectURL(ttsAudioBlobUrl);
+    ttsAudioBlobUrl = null;
+  }
+}
+
+// تقسيم النص لـ chunks كل واحد <= TTS_MAX_CHARS
+// يحاول يقسم عند نهاية جملة/فقرة للجودة الأحسن
+function splitTextForTTS(text) {
+  if (text.length <= TTS_MAX_CHARS) return [text];
+  
+  const chunks = [];
+  let remaining = text;
+  
+  while (remaining.length > 0) {
+    if (remaining.length <= TTS_MAX_CHARS) {
+      chunks.push(remaining);
+      break;
+    }
+    
+    // ابحث عن أفضل نقطة قطع (نهاية فقرة → نهاية جملة → مسافة)
+    let cutPos = TTS_MAX_CHARS;
+    
+    // نهاية فقرة
+    let lastParagraph = remaining.lastIndexOf('\n\n', TTS_MAX_CHARS);
+    if (lastParagraph > TTS_MAX_CHARS * 0.5) {
+      cutPos = lastParagraph;
+    } else {
+      // نهاية جملة (. ! ؟)
+      let bestSentence = -1;
+      for (const mark of ['.', '!', '؟', '?', '\n']) {
+        const pos = remaining.lastIndexOf(mark, TTS_MAX_CHARS);
+        if (pos > bestSentence && pos > TTS_MAX_CHARS * 0.5) bestSentence = pos;
+      }
+      if (bestSentence > 0) {
+        cutPos = bestSentence + 1;
+      } else {
+        // آخر مسافة
+        const lastSpace = remaining.lastIndexOf(' ', TTS_MAX_CHARS);
+        if (lastSpace > 0) cutPos = lastSpace;
+      }
+    }
+    
+    chunks.push(remaining.substring(0, cutPos).trim());
+    remaining = remaining.substring(cutPos).trim();
+  }
+  
+  return chunks.filter(c => c.length > 0);
+}
+
+// دمج MP3 chunks بسيط (concatenation)
+// MP3 بتسمح بالـ concatenation المباشر لـ frames
+function concatMP3Chunks(base64Chunks) {
+  const buffers = base64Chunks.map(b64 => {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  });
+  
+  const totalLength = buffers.reduce((sum, b) => sum + b.length, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const buf of buffers) {
+    combined.set(buf, offset);
+    offset += buf.length;
+  }
+  return combined;
+}
+
+async function generateTTS() {
+  const text = document.getElementById('story-content').value.trim();
+  if (!text) return toast('النص فارغ', 'error');
+  
+  const voice = document.getElementById('tts-voice').value;
+  const rate = document.getElementById('tts-rate').value;
+  const pitch = document.getElementById('tts-pitch').value;
+  
+  // حفظ الصوت المختار
+  localStorage.setItem('tts_voice', voice);
+  
+  const btn = document.getElementById('tts-generate-btn');
+  const progressDiv = document.getElementById('tts-progress');
+  const progressFill = document.getElementById('tts-progress-fill');
+  const progressText = document.getElementById('tts-progress-text');
+  const resultDiv = document.getElementById('tts-result');
+  
+  btn.disabled = true;
+  btn.textContent = '🎙️ جاري التحويل...';
+  resultDiv.style.display = 'none';
+  progressDiv.style.display = 'block';
+  
+  try {
+    const chunks = splitTextForTTS(text);
+    const totalChunks = chunks.length;
+    const audioChunks = [];
+    
+    progressText.textContent = `النص مقسم لـ ${totalChunks} جزء...`;
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const progress = ((i) / totalChunks) * 100;
+      progressFill.style.width = progress + '%';
+      progressText.textContent = `جاري تحويل الجزء ${i + 1} من ${totalChunks}... (${chunks[i].length} حرف)`;
+      
+      const res = await fetch(TTS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: chunks[i], voice, rate, pitch })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `فشل تحويل الجزء ${i + 1}`);
+      }
+      
+      audioChunks.push(data.audio);
+    }
+    
+    progressFill.style.width = '100%';
+    progressText.textContent = 'جاري دمج الأجزاء...';
+    
+    // دمج كل الـ chunks في MP3 واحد
+    const combinedBytes = concatMP3Chunks(audioChunks);
+    const blob = new Blob([combinedBytes], { type: 'audio/mpeg' });
+    
+    // إنشاء URL للتشغيل
+    if (ttsAudioBlobUrl) URL.revokeObjectURL(ttsAudioBlobUrl);
+    ttsAudioBlobUrl = URL.createObjectURL(blob);
+    
+    // عرض المشغّل
+    const audio = document.getElementById('tts-audio');
+    audio.src = ttsAudioBlobUrl;
+    
+    const sizeKB = (blob.size / 1024).toFixed(0);
+    const voiceLabel = document.querySelector(`#tts-voice option[value="${voice}"]`)?.textContent || voice;
+    document.getElementById('tts-info').textContent = `${voiceLabel} • ${sizeKB} KB • ${totalChunks} جزء`;
+    
+    resultDiv.style.display = 'block';
+    progressDiv.style.display = 'none';
+    
+    toast('✓ تم توليد الصوت بنجاح', 'success');
+    
+  } catch (err) {
+    progressDiv.style.display = 'none';
+    toast('خطأ: ' + err.message, 'error');
+    console.error('[TTS Error]', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🎙️ توليد الصوت';
+  }
+}
+
+function downloadTTS() {
+  if (!ttsAudioBlobUrl) return toast('لا يوجد صوت للتحميل', 'error');
+  
+  const filename = (ttsCurrentStoryTitle || 'story')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '_')
+    .substring(0, 60) + '.mp3';
+  
+  const a = document.createElement('a');
+  a.href = ttsAudioBlobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  
+  toast('✓ تم بدء التحميل', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
 
 init();
 </script>
