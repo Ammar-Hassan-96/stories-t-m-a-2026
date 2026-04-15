@@ -393,13 +393,13 @@ let GEMINI_KEY = localStorage.getItem('gemini_key') || '';
 
 // 🎯 موديلات Gemini حسب الـ action (بترتيب الأفضل)
 const GEMINI_MODELS = {
-  suggest_titles: ["gemini-1.5-pro"],
-  suggest_category: ["gemini-1.5-pro"],
-  fix_grammar: ["gemini-1.5-pro"],
-  improve_content: ["gemini-1.5-pro"],
-  expand_content: ["gemini-1.5-pro"],
-  continue_expand: ["gemini-1.5-pro"],
-  generate_story: ["gemini-1.5-pro"],
+  suggest_titles: ["gemini-2.0-flash"],
+  suggest_category: ["gemini-2.0-flash"],
+  fix_grammar: ["gemini-2.0-flash"],
+  improve_content: ["gemini-2.0-flash"],
+  expand_content: ["gemini-2.0-flash"],
+  continue_expand: ["gemini-2.0-flash"],
+  generate_story: ["gemini-2.0-flash"],
 };
 
 // 📝 Prompts
@@ -492,7 +492,7 @@ async function callAI(payload) {
     }
 
     const promptText = buildPrompt(payload.action, payload);
-    const models = GEMINI_MODELS[payload.action] || ["gemini-1.5-pro"];
+    const models = GEMINI_MODELS[payload.action] || ["gemini-2.0-flash"];
     let lastError = null;
 
     for (const model of models) {
