@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة تحكم القصص</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  body { background: #0a1929; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { color: #d4af37; margin-bottom: 20px; text-align: center; }
+  .card { background: #132f4c; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .login-card { max-width: 400px; margin: 100px auto; }
+  input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #1e4976; background: #0a1929; color: #fff; font-size: 15px; font-family: inherit; }
+  textarea { min-height: 120px; resize: vertical; }
+  button { background: #d4af37; color: #0a1929; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
+  button:hover { background: #b8941f; }
+  button.danger { background: #d32f2f; color: #fff; }
+  button.secondary { background: #1e4976; color: #fff; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #132f4c; padding: 16px; border-radius: 10px; text-align: center; border-right: 4px solid #d4af37; }
+  .stat-num { font-size: 28px; color: #d4af37; font-weight: bold; }
+  .stat-label { color: #90a4ae; font-size: 13px; margin-top: 4px; }
+  .story-item { background: #0a1929; padding: 16px; border-radius: 10px; margin: 10px 0; display: flex; gap: 14px; align-items: center; }
+  .story-img { width: 80px; height: 80px; border-radius: 8px; object-fit: cover; background: #1e4976; }
+  .story-info { flex: 1; }
+  .story-title { color: #d4af37; font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+  .story-excerpt { color: #b0bec5; font-size: 13px; }
+  .story-actions { display: flex; gap: 8px; }
+  .story-actions button { width: auto; padding: 8px 14px; font-size: 13px; }
+  .preview-img { max-width: 200px; max-height: 200px; border-radius: 8px; margin: 10px 0; display: block; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 14px 24px; border-radius: 8px; color: #fff; z-index: 1000; animation: slide 0.3s; }
+  .toast.success { background: #2e7d32; }
+  .toast.error { background: #d32f2f; }
+  @keyframes slide { from { opacity: 0; top: 0; } to { opacity: 1; top: 20px; } }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; margin-right: 6px; }
+  .badge.pub { background: #2e7d32; }
+  .badge.unpub { background: #757575; }
+  label { display: block; margin-top: 12px; color: #90a4ae; font-size: 14px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+  .live-dot { display: inline-block; width: 10px; height: 10px; background: #4caf50; border-radius: 50%; margin-left: 8px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .ai-btn { background: linear-gradient(135deg, #8e44ad, #3498db); color: #fff; padding: 8px 14px; font-size: 13px; border-radius: 8px; border: none; cursor: pointer; margin-right: 8px; font-weight: bold; transition: 0.2s; width: auto; }
+  .ai-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(142, 68, 173, 0.4); }
+  .ai-btn:disabled { opacity: 0.5; cursor: wait; }
+  .ai-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .ai-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .ai-modal.show { display: flex; }
+  .ai-modal-content { background: #132f4c; border-radius: 12px; padding: 24px; max-width: 600px; width: 100%; max-height: 80vh; overflow-y: auto; }
+  .ai-suggestion { background: #0a1929; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; }
+  .ai-suggestion:hover { border-color: #d4af37; }
+  .ai-loading { text-align: center; padding: 30px; color: #d4af37; }
+  .spinner { display: inline-block; width: 30px; height: 30px; border: 3px solid #1e4976; border-top-color: #d4af37; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* 🏆 Elite Edition Styles */
+  .word-counter { display: inline-block; padding: 6px 14px; background: #0a1929; border-radius: 20px; color: #d4af37; font-size: 13px; font-weight: bold; margin-left: 10px; border: 1px solid #1e4976; }
+  .word-counter.live { animation: pulse 1.5s infinite; }
+  
+  /* Streaming text effect */
+  .streaming-text { background: #0a1929; padding: 18px; border-radius: 10px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 15px; line-height: 1.8; border: 1px solid #1e4976; position: relative; }
+  .streaming-text::after { content: '▋'; color: #d4af37; animation: blink 0.8s infinite; }
+  .streaming-text.done::after { content: ''; }
+  @keyframes blink { 50% { opacity: 0; } }
+  
+  /* Style picker for image generation */
+  .style-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0; }
+  .style-card { background: #0a1929; padding: 14px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; text-align: center; }
+  .style-card:hover { border-color: #d4af37; transform: translateY(-2px); }
+  .style-card.selected { border-color: #d4af37; background: linear-gradient(135deg, #1a3a5e, #132f4c); }
+  .style-card .emoji { font-size: 28px; }
+  .style-card .name { color: #d4af37; font-weight: bold; margin-top: 6px; font-size: 14px; }
+  .style-card .desc { color: #90a4ae; font-size: 11px; margin-top: 4px; }
+  
+  /* History panel */
+  .history-panel { background: #0a1929; border-radius: 10px; padding: 14px; max-height: 200px; overflow-y: auto; }
+  .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #1e4976; cursor: pointer; transition: 0.2s; }
+  .history-item:hover { background: #132f4c; }
+  .history-item .info { flex: 1; }
+  .history-item .label { color: #d4af37; font-size: 13px; font-weight: bold; }
+  .history-item .meta { color: #90a4ae; font-size: 11px; margin-top: 2px; }
+  
+  /* Auto-save indicator */
+  .autosave-indicator { position: fixed; bottom: 20px; left: 20px; padding: 8px 16px; background: rgba(46, 125, 50, 0.9); color: #fff; border-radius: 20px; font-size: 12px; opacity: 0; transition: opacity 0.3s; z-index: 999; }
+  .autosave-indicator.show { opacity: 1; }
+  
+  /* Quality score */
+  .quality-score { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-left: 8px; }
+  .quality-score.high { background: #2e7d32; color: #fff; }
+  .quality-score.medium { background: #f57c00; color: #fff; }
+  .quality-score.low { background: #757575; color: #fff; }
+  
+  /* Keyboard shortcut hint */
+  kbd { display: inline-block; padding: 2px 6px; background: #1e4976; border-radius: 4px; font-size: 11px; font-family: monospace; color: #d4af37; border: 1px solid #2c5d8c; }
+  
+  /* Diff highlighting */
+  .diff-add { background: rgba(46, 125, 50, 0.3); padding: 2px 4px; border-radius: 3px; }
+  .diff-remove { background: rgba(211, 47, 47, 0.3); padding: 2px 4px; border-radius: 3px; text-decoration: line-through; opacity: 0.7; }
+  
+  /* Settings button */
+  .settings-btn { position: fixed; top: 20px; right: 20px; background: #132f4c; border: 1px solid #d4af37; color: #d4af37; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; font-size: 20px; z-index: 100; transition: 0.2s; padding: 0; margin: 0; }
+  .settings-btn:hover { background: #d4af37; color: #132f4c; transform: rotate(45deg); }
+  
+  /* Progress bar for long operations */
+  .progress-bar { height: 4px; background: #1e4976; border-radius: 2px; overflow: hidden; margin: 10px 0; }
+  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #d4af37, #f9d56e); width: 0; transition: width 0.3s; animation: progressShimmer 2s infinite; }
+  @keyframes progressShimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+  
+  /* Modal sizes */
+  .ai-modal-content.large { max-width: 900px; }
+  .ai-modal-content.xlarge { max-width: 1100px; }
+</style>
+</head>
+<body>
+<button class="settings-btn" onclick="openSettings()" title="الإعدادات (Ctrl+,)">⚙️</button>
+<div class="autosave-indicator" id="autosave-indicator">💾 تم الحفظ تلقائياً</div>
+<div class="container">
+
+<!-- إعدادات Supabase -->
+<div id="setup" class="card login-card" style="display:none">
+  <h1>⚙️ الإعداد الأول</h1>
+  <label>Supabase URL</label>
+  <input id="cfg-url" placeholder="https://xxxxx.supabase.co">
+  <label>Supabase Anon Key</label>
+  <input id="cfg-key" placeholder="eyJhbGc...">
+  <button onclick="saveConfig()">حفظ والمتابعة</button>
+</div>
+
+<!-- شاشة الدخول -->
+<div id="login" class="card login-card" style="display:none">
+  <h1>🔐 دخول الأدمن</h1>
+  <input id="email" type="email" placeholder="البريد الإلكتروني">
+  <input id="password" type="password" placeholder="كلمة المرور">
+  <button onclick="login()">دخول</button>
+  <button class="secondary" onclick="resetConfig()" style="margin-top:10px">تغيير إعدادات Supabase</button>
+</div>
+
+<!-- اللوحة الرئيسية -->
+<div id="dashboard" style="display:none">
+  <h1>📚 لوحة تحكم القصص <span class="live-dot" title="متصل لحظياً"></span></h1>
+  
+  <div class="stats">
+    <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-label">إجمالي القصص</div></div>
+    <div class="stat"><div class="stat-num" id="stat-pub">0</div><div class="stat-label">منشورة</div></div>
+    <div class="stat"><div class="stat-num" id="stat-draft">0</div><div class="stat-label">مسودات</div></div>
+    <div class="stat"><div class="stat-num" id="stat-last">-</div><div class="stat-label">آخر تحديث</div></div>
+  </div>
+
+  <!-- نموذج إضافة/تعديل -->
+  <div class="card">
+    <h2 id="form-title" style="color:#d4af37;margin-bottom:14px">➕ إضافة قصة جديدة</h2>
+    <input type="hidden" id="story-id">
+    <label>عنوان القصة</label>
+    <input id="story-title" placeholder="مثلاً: حكاية الأمير والتنين">
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiSuggestTitles()">✨ اقتراح عناوين جميلة</button>
+    </div>
+    <label>محتوى القصة <span id="live-word-counter" class="word-counter">0 كلمة</span> <span id="quality-badge"></span></label>
+    <textarea id="story-content" placeholder="اكتب القصة هنا... (Ctrl+E للتطويل، Ctrl+I للتحسين)" oninput="updateLiveStats()"></textarea>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiAction('improve_content')">📝 تحسين الصياغة</button>
+      <button class="ai-btn" onclick="aiAction('expand_content')">📏 تطويل القصة</button>
+      <button class="ai-btn" onclick="aiAction('continue_expand')" style="background: linear-gradient(135deg, #e74c3c, #8e44ad);">🚀 تطويل إضافي</button>
+      <button class="ai-btn" onclick="aiAction('fix_grammar')">✅ تصحيح لغوي</button>
+      <button class="ai-btn" onclick="aiGenerateFromIdea()">💡 قصة من فكرة</button>
+    </div>
+    <label>التصنيف</label>
+    <select id="story-category" style="width:100%; padding:12px; margin:8px 0; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff; font-size:15px;">
+      <option value="drama">قصص دراما</option>
+      <option value="horror">قصص رعب</option>
+      <option value="kids">قصص أطفال</option>
+      <option value="sci-fi">قصص خيال علمي</option>
+      <option value="thriller">قصص مشوقة</option>
+      <option value="islamic">قصص دينية</option>
+      <option value="love">قصص حب</option>
+    </select>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiSuggestCategory()">🎯 اقتراح تصنيف تلقائي</button>
+    </div>
+    <label>المؤلف (اختياري)</label>
+    <input id="story-author" placeholder="اسم المؤلف">
+    <label>صورة القصة</label>
+    <input type="file" id="story-image" accept="image/*" onchange="previewImage(event)">
+    <div class="ai-row">
+      <button class="ai-btn" onclick="aiGenerateImage()">🎨 توليد صورة بالذكاء الاصطناعي</button>
+      <button class="ai-btn" onclick="openTTSModal()" style="background: linear-gradient(135deg, #16a085, #27ae60);">🎙️ تحويل لصوت MP3</button>
+    </div>
+    <img id="preview" class="preview-img" style="display:none">
+    <input type="hidden" id="current-image-url">
+    <div class="row">
+      <div>
+        <label>الترتيب (الأكبر يظهر أولاً)</label>
+        <input type="number" id="story-order" value="0">
+      </div>
+      <div>
+        <label><input type="checkbox" id="story-published" checked style="width:auto;margin-left:8px"> منشورة</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button onclick="saveStory()">💾 حفظ</button>
+      <button class="secondary" onclick="resetForm()">🔄 جديد</button>
+      <button class="danger" onclick="logout()">🚪 خروج</button>
+    </div>
+  </div>
+
+  <!-- قائمة القصص -->
+  <div class="card">
+    <h2 style="color:#d4af37;margin-bottom:14px">📖 جميع القصص</h2>
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <label>فلترة بالتصنيف</label>
+        <select id="filter-category" onchange="renderStories()" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+          <option value="">كل التصنيفات</option>
+          <option value="drama">قصص دراما</option>
+          <option value="horror">قصص رعب</option>
+          <option value="kids">قصص أطفال</option>
+          <option value="sci-fi">قصص خيال علمي</option>
+          <option value="thriller">قصص مشوقة</option>
+          <option value="islamic">قصص دينية</option>
+          <option value="love">قصص حب</option>
+        </select>
+      </div>
+      <div>
+        <label>بحث في العنوان</label>
+        <input id="search-input" oninput="renderStories()" placeholder="اكتب للبحث..." style="margin:0">
+      </div>
+    </div>
+    <div id="stories-list"></div>
+  </div>
+</div>
+
+  <!-- مودال AI -->
+  <div class="ai-modal" id="ai-modal">
+    <div class="ai-modal-content large" id="ai-modal-content">
+      <h3 id="ai-modal-title" style="color:#d4af37;margin-bottom:14px">✨ اقتراحات الذكاء الاصطناعي</h3>
+      <div id="ai-modal-body"></div>
+      <button class="secondary" onclick="closeAIModal()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- مودال الإعدادات -->
+  <div class="ai-modal" id="settings-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">⚙️ الإعدادات</h3>
+      
+      <label>🔑 Gemini API Key</label>
+      <input id="settings-gemini-key" type="password" placeholder="AIzaSy...">
+      <small style="color:#90a4ae;display:block;margin-top:4px">احصل عليه من <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#d4af37">aistudio.google.com</a></small>
+      
+      <label style="margin-top:18px">🎨 نمط الصور المفضل</label>
+      <div class="style-grid">
+        <div class="style-card" data-style="cinematic" onclick="selectStyle('cinematic')">
+          <div class="emoji">🎬</div>
+          <div class="name">سينمائي</div>
+          <div class="desc">جودة أفلام IMAX</div>
+        </div>
+        <div class="style-card" data-style="photorealistic" onclick="selectStyle('photorealistic')">
+          <div class="emoji">📸</div>
+          <div class="name">واقعي</div>
+          <div class="desc">8K تصوير احترافي</div>
+        </div>
+        <div class="style-card" data-style="anime" onclick="selectStyle('anime')">
+          <div class="emoji">🎭</div>
+          <div class="name">أنمي</div>
+          <div class="desc">Studio Ghibli</div>
+        </div>
+        <div class="style-card" data-style="digital_art" onclick="selectStyle('digital_art')">
+          <div class="emoji">🎨</div>
+          <div class="name">رسم رقمي</div>
+          <div class="desc">ArtStation تصميم</div>
+        </div>
+        <div class="style-card" data-style="dark_fantasy" onclick="selectStyle('dark_fantasy')">
+          <div class="emoji">🌙</div>
+          <div class="name">خيال داكن</div>
+          <div class="desc">قوطي مظلم</div>
+        </div>
+      </div>
+
+      <label style="margin-top:18px">⌨️ اختصارات لوحة المفاتيح</label>
+      <div style="background:#0a1929;padding:12px;border-radius:8px;font-size:13px;line-height:2">
+        <div><kbd>Ctrl+S</kbd> حفظ القصة</div>
+        <div><kbd>Ctrl+E</kbd> تطويل القصة</div>
+        <div><kbd>Ctrl+I</kbd> تحسين الصياغة</div>
+        <div><kbd>Ctrl+H</kbd> سجل التغييرات</div>
+        <div><kbd>Ctrl+,</kbd> فتح الإعدادات</div>
+        <div><kbd>Esc</kbd> إغلاق المودال</div>
+      </div>
+      
+      <div class="row" style="margin-top:18px">
+        <button onclick="saveSettings()">💾 حفظ الإعدادات</button>
+        <button class="secondary" onclick="closeSettings()">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال السجل -->
+  <div class="ai-modal" id="history-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">📜 سجل التغييرات</h3>
+      <p style="color:#90a4ae;font-size:13px;margin-bottom:10px">يحفظ آخر 10 نسخ من القصة الحالية تلقائياً</p>
+      <div id="history-list" class="history-panel"></div>
+      <button class="secondary" onclick="closeHistory()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- 🎙️ مودال TTS - Browser API -->
+  <div class="ai-modal" id="tts-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">🎙️ تحويل القصة لصوت</h3>
+      
+      <p style="color:#90a4ae;font-size:13px;margin-bottom:14px;background:#0a1929;padding:10px;border-radius:8px;border-right:3px solid #16a085;">
+        💡 <strong>تعمل بأصوات متصفحك</strong> — مجاني تماماً، بدون حدود. الأصوات اللي بتظهر هي اللي مثبّتة على جهازك.
+      </p>
+      
+      <label>اختر الصوت</label>
+      <select id="tts-voice" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+        <option value="">جاري تحميل الأصوات...</option>
+      </select>
+
+      <div class="row" style="margin-top:14px">
+        <div>
+          <label>السرعة</label>
+          <select id="tts-rate" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="0.7">بطيء جداً</option>
+            <option value="0.85">بطيء</option>
+            <option value="1.0" selected>عادي</option>
+            <option value="1.15">سريع</option>
+            <option value="1.3">سريع جداً</option>
+          </select>
+        </div>
+        <div>
+          <label>نغمة الصوت</label>
+          <select id="tts-pitch" style="width:100%; padding:10px; border-radius:8px; border:1px solid #1e4976; background:#0a1929; color:#fff;">
+            <option value="0.7">أعمق</option>
+            <option value="0.85">أعمق قليلاً</option>
+            <option value="1.0" selected>عادي</option>
+            <option value="1.15">أحدّ قليلاً</option>
+            <option value="1.3">أحدّ</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:18px">
+        <button onclick="playTTS()" id="tts-play-btn" style="background: linear-gradient(135deg, #2980b9, #3498db);">▶️ تشغيل</button>
+        <button onclick="pauseResumeTTS()" id="tts-pause-btn" class="secondary" style="display:none">⏸️ إيقاف مؤقت</button>
+        <button onclick="showRecordSection()" class="secondary">⬇️ أحتاج ملف صوت للتنزيل</button>
+      </div>
+
+      <!-- قسم التسجيل (يظهر بناءً على طلب المستخدم) -->
+      <div id="tts-record-section" style="display:none; margin-top:18px; padding:16px; background:#0a1929; border-radius:10px; border:1px dashed #16a085;">
+        <strong style="color:#d4af37;display:block;margin-bottom:10px">🎙️ تسجيل وتنزيل ملف الصوت</strong>
+        <details style="background:#132f4c;padding:12px;border-radius:8px;margin-bottom:12px">
+          <summary style="cursor:pointer;color:#f39c12;font-size:13px;font-weight:bold;">📌 طريقة التسجيل (مهم اقرأها قبل البدء)</summary>
+          <p style="color:#b0bec5;font-size:12px;margin-top:8px;line-height:1.8">
+            المتصفح هيطلب إذن "مشاركة الشاشة" - دي طريقة تقنية لتسجيل الصوت:<br><br>
+            1️⃣ اضغط الزرار اللي تحت<br>
+            2️⃣ اختار <strong style="color:#fff">"Chrome Tab"</strong> أو <strong style="color:#fff">"علامة تبويب"</strong><br>
+            3️⃣ اختار التاب الحالي بتاع اللوحة<br>
+            4️⃣ <strong style="color:#f39c12">⚠️ في الأسفل فعّل: "Share tab audio" / "مشاركة صوت علامة التبويب"</strong><br>
+            5️⃣ اضغط "Share" / "مشاركة"<br>
+            6️⃣ التسجيل هيبدأ تلقائياً (متغلقش التاب)<br>
+            7️⃣ بعد ما يخلص الكلام، يظهر مشغل الصوت + زر التحميل
+          </p>
+        </details>
+        <button onclick="recordTTSAudio()" id="tts-record-btn" style="background: linear-gradient(135deg, #c0392b, #e74c3c); width:100%">🎙️ تسجيل وتنزيل ملف</button>
+      </div>
+
+      <!-- منطقة عرض الصوت المُسجّل -->
+      <div id="tts-result" style="display:none; margin-top:18px; padding:16px; background:#0a1929; border-radius:10px; border:1px solid #16a085;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;flex-wrap:wrap">
+          <span style="color:#16a085; font-size:20px;">✓</span>
+          <strong style="color:#d4af37;">تم التسجيل بنجاح</strong>
+          <span id="tts-info" style="color:#90a4ae; font-size:12px; margin-right:auto;"></span>
+        </div>
+        <audio id="tts-audio" controls style="width:100%; margin-bottom:10px;"></audio>
+        <button onclick="downloadTTS()" style="background: linear-gradient(135deg, #16a085, #27ae60);">⬇️ تحميل الملف</button>
+      </div>
+
+      <button class="secondary" onclick="closeTTSModal()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const AI_ENDPOINT = "/.netlify/functions/gemini";
+
+// 🔑 Gemini API Key - يُحفظ في localStorage مرة واحدة
+let GEMINI_KEY = localStorage.getItem('gemini_key') || '';
+
+// 🎯 موديلات Gemini حسب الـ action (بترتيب الأفضل)
+const GEMINI_MODELS = {
+  suggest_titles: ["gemini-2.5-flash"],
+  suggest_category: ["gemini-2.5-flash"],
+  fix_grammar: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  expand_content: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  continue_expand: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+  generate_story: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-2.5-flash"],
+};
+
+// 📝 Prompts
+function buildPrompt(action, { content, title, category, prompt }) {
+  switch (action) {
+    case "suggest_titles":
+      return `اقرأ القصة التالية واقترح 3 عناوين جذابة وقصيرة (كل عنوان لا يزيد عن 7 كلمات) مناسبة لها. أرجع الـ 3 عناوين فقط، كل واحد في سطر منفصل، بدون ترقيم أو رموز أو شرح.\n\nالقصة:\n${content}`;
+    case "improve_content":
+      return `أعد صياغة القصة التالية بأسلوب أدبي جذاب، مع الحفاظ على جميع الأحداث والشخصيات. لا تقصّر القصة. اجعلها أكثر تشويقاً. أرجع القصة المُحسَّنة فقط:\n\n${content}`;
+    case "expand_content":
+      return `وسّع القصة التالية لتصبح طويلة ومفصّلة (3000-5000 كلمة). أضف تفاصيل ووصف ومشاهد وحوارات، مع الحفاظ على الأحداث الأصلية. اكتب بأسلوب أدبي راقٍ. أرجع القصة الموسّعة فقط:\n\n${content}`;
+    case "continue_expand":
+      return `أكمل توسيع القصة التالية بإضافة 3000-5000 كلمة جديدة. أضف مشاهد فرعية، حوارات، ووصف حسي. حافظ على نفس الأسلوب. أرجع القصة كاملة (الأصل + الإضافات) بدون أي تعليقات:\n\n${content}`;
+    case "fix_grammar":
+      return `صحّح الأخطاء الإملائية واللغوية في النص مع الحفاظ على الأسلوب الأصلي. أرجع النص المُصحَّح فقط:\n\n${content}`;
+    case "generate_story":
+      return `اكتب قصة طويلة ومفصّلة (3000-5000 كلمة) بناءً على الفكرة التالية. اجعلها مشوقة بأسلوب سردي جذاب. أرجع القصة فقط:\n\nالفكرة: ${prompt}\nالتصنيف: ${category || "أي تصنيف مناسب"}`;
+    case "suggest_category":
+      return `اقرأ القصة وحدد أنسب تصنيف من: drama, horror, kids, sci-fi, thriller, islamic, love. أرجع كلمة واحدة فقط:\n\n${content}`;
+  }
+  throw new Error("action غير معروف: " + action);
+}
+
+// 🔍 فحص لو الخطأ يسمح بالتحويل لموديل تاني
+function isRetryable(msg) {
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return m.includes("quota") || m.includes("rate limit") || m.includes("exhausted") ||
+         m.includes("429") || m.includes("exceeded") || m.includes("not found") ||
+         m.includes("not supported") || m.includes("404") || m.includes("deprecated") ||
+         m.includes("not available") || m.includes("high demand") ||
+         m.includes("unavailable") || m.includes("503") || m.includes("overloaded") ||
+         m.includes("try again") || m.includes("spikes in demand");
+}
+
+// 💾 طلب الـ API Key من المستخدم لو مش موجود
+function ensureGeminiKey() {
+  if (GEMINI_KEY) return true;
+  const key = prompt('مطلوب Gemini API Key (مرة واحدة فقط):\nاحصل عليه من: https://aistudio.google.com/apikey');
+  if (!key || !key.trim()) return false;
+  GEMINI_KEY = key.trim();
+  localStorage.setItem('gemini_key', GEMINI_KEY);
+  toast('تم حفظ المفتاح ✓', 'success');
+  return true;
+}
+
+// 🚀 استدعاء Gemini مباشرة (بدون timeout - يشتغل من المتصفح مباشرة)
+async function callGeminiDirect(model, promptText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text: promptText }] }],
+    generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error?.message || `HTTP ${res.status}`);
+  }
+
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  let text = "";
+  for (const p of parts) if (p.text) text += p.text;
+
+  if (!text.trim()) {
+    const reason = data.candidates?.[0]?.finishReason || "UNKNOWN";
+    throw new Error(`رد فاضي من ${model} (${reason})`);
+  }
+
+  return text.trim();
+}
+
+let isLoading = false;
+
+async function callAI(payload) {
+  if (isLoading) throw new Error("استنى شوية قبل ما تبعت طلب تاني");
+  isLoading = true;
+
+  try {
+    // 🎨 الصور تمشي عبر Netlify (لأن Pollinations يحتاج backend)
+    if (payload.action === 'generate_image') {
+      const res = await fetch(AI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error("السيرفر رجع رد غير متوقع"); }
+      if (!res.ok || data.error) throw new Error(data.error || "حصل خطأ");
+      return data;
+    }
+
+    // 💬 النصوص تمشي مباشرة من المتصفح لـ Gemini (مفيش timeout)
+    if (!ensureGeminiKey()) {
+      throw new Error("لازم تدخل Gemini API Key");
+    }
+
+    const promptText = buildPrompt(payload.action, payload);
+    const models = GEMINI_MODELS[payload.action] || ["gemini-2.5-flash"];
+    let lastError = null;
+
+    for (const model of models) {
+      try {
+        console.log(`[AI] جاري المحاولة بـ ${model}...`);
+        const text = await callGeminiDirect(model, promptText);
+        console.log(`[AI] ✓ نجح ${model}: ${text.length} حرف`);
+        return { success: true, text, model, image: null };
+      } catch (err) {
+        lastError = err.message;
+        console.log(`[AI] ✗ فشل ${model}: ${err.message}`);
+        if (!isRetryable(err.message)) throw err;
+      }
+    }
+
+    throw new Error("فشلت كل الموديلات: " + lastError);
+
+  } finally {
+    isLoading = false;
+  }
+}
+function showAIModal(title, body) {
+  document.getElementById('ai-modal-title').textContent = title;
+  document.getElementById('ai-modal-body').innerHTML = body;
+  document.getElementById('ai-modal').classList.add('show');
+}
+
+function closeAIModal() {
+  document.getElementById('ai-modal').classList.remove('show');
+}
+
+function showLoading(title) {
+  showAIModal(title, '<div class="ai-loading"><div class="spinner"></div><p style="margin-top:14px">جاري المعالجة...</p></div>');
+}
+
+// اقتراح 3 عناوين
+async function aiSuggestTitles() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  showLoading('✨ جاري اقتراح عناوين...');
+  try {
+    const data = await callAI({ action: 'suggest_titles', content });
+    const titles = data.text.split('\n').filter(t => t.trim()).slice(0, 3);
+    const html = titles.map((t, i) => 
+      `<div class="ai-suggestion" onclick="applyTitle('${t.replace(/'/g, "\\'")}')">
+         <strong style="color:#d4af37">${i+1}.</strong> ${escapeHtml(t.trim())}
+       </div>`
+    ).join('');
+    showAIModal('✨ اختر العنوان المناسب', html);
+  } catch (e) {
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+    closeAIModal();
+  }
+}
+
+function applyTitle(title) {
+  document.getElementById('story-title').value = title.trim();
+  closeAIModal();
+  toast('تم تطبيق العنوان ✓', 'success');
+}
+
+// متغير لحفظ النص المقترح من AI
+let pendingAIText = '';
+
+// تحسين/تطويل/تصحيح المحتوى
+async function aiAction(action) {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  const titles = {
+    improve_content: '📝 جاري تحسين الصياغة...',
+    expand_content: '📏 جاري تطويل القصة... (قد يستغرق دقيقة)',
+    continue_expand: '🚀 جاري إضافة محتوى إضافي... (قد يستغرق دقيقة)',
+    fix_grammar: '✅ جاري التصحيح اللغوي...'
+  };
+  
+  showLoading(titles[action] || 'جاري المعالجة...');
+  try {
+    const data = await callAI({ action, content });
+    pendingAIText = data.text;
+    
+    // إحصائيات النتيجة
+    const newWords = data.text.trim().split(/\s+/).filter(Boolean).length;
+    const oldWords = content.trim().split(/\s+/).filter(Boolean).length;
+    const diff = newWords - oldWords;
+    const diffSign = diff > 0 ? '+' : '';
+    const diffColor = diff > 0 ? '#4caf50' : (diff < 0 ? '#f44336' : '#90a4ae');
+    const modelInfo = data.model ? `<span style="font-size:11px;color:#90a4ae;margin-right:auto">⚙️ ${data.model}</span>` : '';
+    
+    // زر "تطبيق + تطويل إضافي" يظهر فقط بعد التطويل
+    const showExtraExpand = (action === 'expand_content' || action === 'continue_expand');
+    const extraBtn = showExtraExpand 
+      ? '<button onclick="applyAndContinueExpand()" style="background:linear-gradient(135deg,#e74c3c,#8e44ad);color:#fff;width:auto">🚀 تطبيق + تطويل إضافي</button>' 
+      : '';
+    
+    const html = 
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<strong style="color:#d4af37">' + newWords.toLocaleString('ar-EG') + ' كلمة</strong>' +
+      '<span style="color:#90a4ae;font-size:13px">(قبل: ' + oldWords.toLocaleString('ar-EG') + ' • التغيير: <span style="color:' + diffColor + ';font-weight:bold">' + diffSign + diff.toLocaleString('ar-EG') + '</span>)</span>' +
+      modelInfo +
+      '</div>' +
+      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:350px;overflow-y:auto;white-space:pre-wrap;line-height:1.8">' + 
+      escapeHtml(data.text) + 
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">' +
+      '<button onclick="applyPendingText()" style="width:auto">✓ تطبيق</button>' +
+      extraBtn +
+      '<button class="secondary" onclick="closeAIModal()" style="width:auto">إلغاء</button>' +
+      '</div>';
+    showAIModal('✨ نتيجة الذكاء الاصطناعي', html);
+  } catch (e) {
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+    closeAIModal();
+  }
+}
+
+// 🚀 تطبيق النتيجة وتطويل إضافي تلقائي
+async function applyAndContinueExpand() {
+  if (!pendingAIText) return;
+  // احفظ النص في History قبل التطبيق
+  const oldText = document.getElementById('story-content').value;
+  if (oldText && oldText !== pendingAIText) {
+    saveToHistory('expand_content', oldText, pendingAIText);
+  }
+  document.getElementById('story-content').value = pendingAIText;
+  pendingAIText = '';
+  updateLiveStats();
+  closeAIModal();
+  toast('تم التطبيق ✓ بدء التطويل الإضافي...', 'success');
+  // استنى نصف ثانية ثم شغّل التطويل الإضافي
+  setTimeout(() => aiAction('continue_expand'), 500);
+}
+
+// توليد قصة من فكرة
+async function aiGenerateFromIdea() {
+  const idea = prompt('اكتب فكرة القصة باختصار:');
+  if (!idea || !idea.trim()) return;
+  
+  const category = document.getElementById('story-category').value;
+  showLoading('💡 جاري توليد القصة...');
+  try {
+    const data = await callAI({ action: 'generate_story', prompt: idea, category });
+    pendingAIText = data.text;
+    const html = 
+      '<p style="color:#90a4ae;margin-bottom:10px">القصة المُولَّدة:</p>' +
+      '<div style="background:#0a1929;padding:14px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + 
+      escapeHtml(data.text) + 
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px">' +
+      '<button onclick="applyPendingText()">✓ استخدم هذه القصة</button>' +
+      '<button class="secondary" onclick="closeAIModal()">إلغاء</button>' +
+      '</div>';
+    showAIModal('💡 قصة جديدة', html);
+  } catch (e) {
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+    closeAIModal();
+  }
+}
+
+// تطبيق النص المقترح على حقل المحتوى
+function applyPendingText() {
+  if (!pendingAIText) return toast('لا يوجد نص للتطبيق', 'error');
+  document.getElementById('story-content').value = pendingAIText;
+  pendingAIText = '';
+  closeAIModal();
+  toast('تم التطبيق ✓', 'success');
+}
+
+// اقتراح تصنيف
+async function aiSuggestCategory() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  toast('🎯 جاري تحليل القصة...', 'success');
+  try {
+    const data = await callAI({ action: 'suggest_category', content });
+    const cat = data.text.trim().toLowerCase().replace(/[^\w-]/g, '');
+    const validCats = ['drama', 'horror', 'kids', 'sci-fi', 'thriller', 'islamic', 'love'];
+    if (validCats.includes(cat)) {
+      document.getElementById('story-category').value = cat;
+      toast('✓ تم تحديد التصنيف: ' + cat, 'success');
+    } else {
+      toast('لم يستطع تحديد تصنيف دقيق', 'error');
+    }
+  } catch (e) {
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+  }
+}
+
+// توليد صورة
+// 🎨 توليد صورة احترافية - Backend بـ Gemini Director + Pollinations
+async function aiGenerateImage() {
+  const title = document.getElementById('story-title').value.trim();
+  const content = document.getElementById('story-content').value.trim();
+  const category = document.getElementById('story-category').value;
+  const style = localStorage.getItem('image_style') || 'cinematic';
+
+  if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
+  
+  showLoading('🎨 جاري تحليل القصة وتوليد مشهد سينمائي... (10-30 ثانية)');
+  
+  try {
+    const res = await fetch(AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        action: 'generate_image', 
+        title, 
+        content, 
+        category,
+        style
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "فشل توليد الصورة");
+
+    // تحويل base64 لـ blob
+    const byteCharacters = atob(data.image);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], {type: 'image/png'});
+    const file = new File([blob], `ai_${style}_${Date.now()}.png`, { type: 'image/png' });
+
+    // رفع على Supabase
+    const imageUrl = await uploadImage(file);
+    document.getElementById('current-image-url').value = imageUrl;
+    const img = document.getElementById('preview');
+    img.src = imageUrl;
+    img.style.display = 'block';
+    
+    closeAIModal();
+    const styleNames = { cinematic: 'سينمائي', photorealistic: 'واقعي', anime: 'أنمي', digital_art: 'رسم رقمي', dark_fantasy: 'خيال داكن' };
+    toast(`✓ تم توليد صورة ${styleNames[style] || style}`, 'success');
+  } catch (e) {
+    console.error('[Image Gen]', e);
+    toast(e.message || 'حصل خطأ في التوليد', 'error');
+    closeAIModal();
+  }
+}
+let supabase_stored = null;
+let sb = null;
+let stories = [];
+
+// تحميل الإعدادات
+function init() {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (!url || !key) {
+    document.getElementById('setup').style.display = 'block';
+    return;
+  }
+  sb = window.supabase.createClient(url, key);
+  checkAuth();
+}
+
+function saveConfig() {
+  const url = document.getElementById('cfg-url').value.trim();
+  const key = document.getElementById('cfg-key').value.trim();
+  if (!url || !key) return toast('املأ الحقول', 'error');
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  location.reload();
+}
+
+function resetConfig() {
+  localStorage.clear();
+  location.reload();
+}
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showDashboard();
+  else document.getElementById('login').style.display = 'block';
+}
+
+async function login() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return toast('خطأ في الدخول: ' + error.message, 'error');
+  toast('تم الدخول بنجاح', 'success');
+  showDashboard();
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+function showDashboard() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadStories();
+  subscribeRealtime();
+}
+
+async function loadStories() {
+  const { data, error } = await sb
+    .from('stories')
+    .select('*')
+    .order('display_order', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) return toast('خطأ: ' + error.message, 'error');
+  stories = data || [];
+  renderStories();
+  updateStats();
+}
+
+function subscribeRealtime() {
+  sb.channel('admin-stories')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => {
+      loadStories();
+    })
+    .subscribe();
+}
+
+function renderStories() {
+  const list = document.getElementById('stories-list');
+  const filterCat = document.getElementById('filter-category')?.value || '';
+  const searchTerm = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+  
+  let filtered = stories;
+  if (filterCat) filtered = filtered.filter(s => s.category_id === filterCat);
+  if (searchTerm) filtered = filtered.filter(s => s.title.toLowerCase().includes(searchTerm));
+  
+  if (filtered.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:30px">لا توجد قصص مطابقة</p>';
+    return;
+  }
+  
+  const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
+  
+list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
+filtered.map(s => {
+  // حساب التاريخ بشكل منفصل لكل قصة
+  const rawDate = s.updated_at || s.created_at || new Date().toISOString();
+  const formattedTime = new Date(rawDate).toLocaleString('ar-EG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  // يجب وجود كلمة return هنا لكي يعمل الكود
+  return `
+    <div class="story-item">
+      <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
+      <div class="story-info">
+        <div class="story-title">${escapeHtml(s.title)}</div>
+        <div class="story-excerpt">${escapeHtml(s.content.substring(0, 80))}...</div>
+        <div style="margin-top:6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+          <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
+          <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
+          <span style="color:#90a4ae; font-size: 11px;">🔢 ترتيب: ${s.display_order}</span>
+          <span style="color:#d4af37; font-size: 11px; border-right: 1px solid #1e4976; padding-right: 8px;">🕒 تحديث: ${formattedTime}</span>
+        </div>
+      </div>
+      <div class="story-actions">
+        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
+        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
+      </div>
+    </div>
+  `;
+}).join('');
+ }
+function updateStats() {
+  document.getElementById('stat-total').textContent = stories.length;
+  document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
+  document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
+  
+  if (stories.length > 0) {
+    // العثور على أحدث تاريخ تحديث بين كل القصص
+    const latestStory = stories.reduce((prev, current) => {
+      const prevDate = new Date(prev.updated_at || 0);
+      const currentDate = new Date(current.updated_at || 0);
+      return (currentDate > prevDate) ? current : prev;
+    });
+
+    if (latestStory && latestStory.updated_at) {
+      const lastUpdateFormatted = new Date(latestStory.updated_at).toLocaleString('ar-EG', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      document.getElementById('stat-last').textContent = lastUpdateFormatted;
+    }
+  }
+}
+
+function previewImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('preview');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadImage(file) {
+  const ext = file.name.split('.').pop();
+  const name = `story_${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('story-images').upload(name, file);
+  if (error) throw error;
+  const { data } = sb.storage.from('story-images').getPublicUrl(name);
+  return data.publicUrl;
+}
+
+async function saveStory() {
+  const id = document.getElementById('story-id').value;
+  const title = document.getElementById('story-title').value.trim();
+  const content = document.getElementById('story-content').value.trim();
+  const order = parseInt(document.getElementById('story-order').value) || 0;
+  const published = document.getElementById('story-published').checked;
+  const categoryId = document.getElementById('story-category').value;
+  const author = document.getElementById('story-author').value.trim();
+  const file = document.getElementById('story-image').files[0];
+  let imageUrl = document.getElementById('current-image-url').value;
+
+  if (!title || !content) return toast('العنوان والمحتوى مطلوبان', 'error');
+
+  try {
+    if (file) {
+      toast('جاري رفع الصورة...', 'success');
+      imageUrl = await uploadImage(file);
+    }
+    const payload = { title, content, image_url: imageUrl, display_order: order, is_published: published, category_id: categoryId, author: author || null };
+    const result = id
+      ? await sb.from('stories').update(payload).eq('id', id)
+      : await sb.from('stories').insert(payload);
+    if (result.error) throw result.error;
+    toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
+    // 🧹 امسح المسودة بعد الحفظ الناجح
+    localStorage.removeItem('story_draft');
+    resetForm();
+  } catch (e) {
+    toast(e.message || 'حصل خطأ، حاول تاني', 'error');
+  }
+}
+
+function editStory(id) {
+  const s = stories.find(x => x.id === id);
+  if (!s) return;
+  // 🧹 امسح المسودة القديمة - القصة اللي بنعدلها محفوظة أصلاً
+  localStorage.removeItem('story_draft');
+  document.getElementById('story-id').value = s.id;
+  document.getElementById('story-title').value = s.title;
+  document.getElementById('story-content').value = s.content;
+  document.getElementById('story-order').value = s.display_order;
+  document.getElementById('story-published').checked = s.is_published;
+  document.getElementById('story-category').value = s.category_id || 'horror';
+  document.getElementById('story-author').value = s.author || '';
+  document.getElementById('current-image-url').value = s.image_url || '';
+  if (s.image_url) {
+    const img = document.getElementById('preview');
+    img.src = s.image_url;
+    img.style.display = 'block';
+  }
+  document.getElementById('form-title').textContent = '✏️ تعديل القصة';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteStory(id) {
+  if (!confirm('متأكد من الحذف؟')) return;
+  const { error } = await sb.from('stories').delete().eq('id', id);
+  if (error) return toast('خطأ: ' + error.message, 'error');
+  toast('تم الحذف ✓', 'success');
+}
+
+function resetForm() {
+  document.getElementById('story-id').value = '';
+  document.getElementById('story-title').value = '';
+  document.getElementById('story-content').value = '';
+  document.getElementById('story-order').value = '0';
+  document.getElementById('story-published').checked = true;
+  document.getElementById('story-category').value = 'horror';
+  document.getElementById('story-author').value = '';
+  document.getElementById('story-image').value = '';
+  document.getElementById('current-image-url').value = '';
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('form-title').textContent = '➕ إضافة قصة جديدة';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🏆 ELITE EDITION - Advanced Features
+// ═══════════════════════════════════════════════════════════
+
+// 📊 إحصائيات حية للنص
+function updateLiveStats() {
+  const text = document.getElementById('story-content').value.trim();
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+  const counter = document.getElementById('live-word-counter');
+  if (counter) counter.textContent = wordCount.toLocaleString('ar-EG') + ' كلمة';
+  
+  // تقييم الجودة التلقائي
+  const badge = document.getElementById('quality-badge');
+  if (badge) {
+    if (wordCount === 0) {
+      badge.innerHTML = '';
+    } else if (wordCount < 200) {
+      badge.innerHTML = '<span class="quality-score low">قصة قصيرة</span>';
+    } else if (wordCount < 1500) {
+      badge.innerHTML = '<span class="quality-score medium">قصة متوسطة</span>';
+    } else if (wordCount < 5000) {
+      badge.innerHTML = '<span class="quality-score high">قصة طويلة</span>';
+    } else {
+      badge.innerHTML = '<span class="quality-score high">قصة ضخمة 🏆</span>';
+    }
+  }
+  
+  // حفظ تلقائي محلي
+  scheduleAutoSave();
+}
+
+// 💾 حفظ تلقائي محلي (كل 3 ثواني بعد التوقف عن الكتابة)
+let autoSaveTimer;
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    const content = document.getElementById('story-content').value;
+    const title = document.getElementById('story-title').value;
+    // مايحفظش مسودة فاضية
+    if (!content || content.trim().length < 10) {
+      localStorage.removeItem('story_draft');
+      return;
+    }
+    // مايحفظش مسودة لقصة بنعدلها (عشان مش يسألك تسترجعها بعدين)
+    if (document.getElementById('story-id').value) {
+      return;
+    }
+    const draft = {
+      title,
+      content,
+      author: document.getElementById('story-author').value,
+      category: document.getElementById('story-category').value,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('story_draft', JSON.stringify(draft));
+    const indicator = document.getElementById('autosave-indicator');
+    indicator.classList.add('show');
+    setTimeout(() => indicator.classList.remove('show'), 2000);
+  }, 3000);
+}
+
+// 📜 سجل التغييرات (يحفظ آخر 10 نسخ)
+function saveToHistory(action, oldText, newText) {
+  if (!oldText || oldText === newText) return;
+  let history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  history.unshift({
+    action,
+    oldText,
+    newText,
+    timestamp: Date.now(),
+    oldWords: oldText.trim().split(/\s+/).filter(Boolean).length,
+    newWords: newText.trim().split(/\s+/).filter(Boolean).length
+  });
+  history = history.slice(0, 10); // آخر 10 بس
+  localStorage.setItem('story_history', JSON.stringify(history));
+}
+
+function showHistory() {
+  const history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  const list = document.getElementById('history-list');
+  if (history.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل بعد</p>';
+  } else {
+    const actionNames = {
+      improve_content: '📝 تحسين الصياغة',
+      expand_content: '📏 تطويل القصة',
+      continue_expand: '🚀 تطويل إضافي',
+      fix_grammar: '✅ تصحيح لغوي',
+      generate_story: '💡 توليد قصة'
+    };
+    list.innerHTML = history.map((h, i) => `
+      <div class="history-item" onclick="restoreFromHistory(${i})">
+        <div class="info">
+          <div class="label">${actionNames[h.action] || h.action}</div>
+          <div class="meta">${new Date(h.timestamp).toLocaleString('ar-EG')} • ${h.oldWords} → ${h.newWords} كلمة</div>
+        </div>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();restoreFromHistory(${i})">↶ استعادة</button>
+      </div>
+    `).join('');
+  }
+  document.getElementById('history-modal').classList.add('show');
+}
+
+function restoreFromHistory(index) {
+  const history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  if (!history[index]) return;
+  if (!confirm('استبدال النص الحالي بالنسخة القديمة؟')) return;
+  document.getElementById('story-content').value = history[index].oldText;
+  updateLiveStats();
+  closeHistory();
+  toast('تمت الاستعادة ↶', 'success');
+}
+
+function closeHistory() {
+  document.getElementById('history-modal').classList.remove('show');
+}
+
+// ⚙️ الإعدادات
+function openSettings() {
+  document.getElementById('settings-gemini-key').value = localStorage.getItem('gemini_key') || '';
+  const savedStyle = localStorage.getItem('image_style') || 'cinematic';
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.style === savedStyle);
+  });
+  document.getElementById('settings-modal').classList.add('show');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('show');
+}
+
+function selectStyle(style) {
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.style === style);
+  });
+  localStorage.setItem('image_style', style);
+}
+
+function saveSettings() {
+  const key = document.getElementById('settings-gemini-key').value.trim();
+  if (key) {
+    GEMINI_KEY = key;
+    localStorage.setItem('gemini_key', key);
+  }
+  const selected = document.querySelector('.style-card.selected');
+  if (selected) localStorage.setItem('image_style', selected.dataset.style);
+  closeSettings();
+  toast('✓ تم حفظ الإعدادات', 'success');
+}
+
+// ⌨️ اختصارات لوحة المفاتيح
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 's') { e.preventDefault(); saveStory(); }
+    else if (e.key === 'e') { e.preventDefault(); aiAction('expand_content'); }
+    else if (e.key === 'i') { e.preventDefault(); aiAction('improve_content'); }
+    else if (e.key === 'h') { e.preventDefault(); showHistory(); }
+    else if (e.key === ',') { e.preventDefault(); openSettings(); }
+  } else if (e.key === 'Escape') {
+    document.querySelectorAll('.ai-modal.show').forEach(m => m.classList.remove('show'));
+  }
+});
+
+// 🔄 استرجاع المسودة عند فتح اللوحة
+function restoreDraft() {
+  const draft = JSON.parse(localStorage.getItem('story_draft') || 'null');
+  if (!draft || !draft.content || draft.content.trim().length < 10) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
+  
+  // فقط لو المسودة جديدة (آخر يوم)
+  const ageHours = (Date.now() - draft.timestamp) / (1000 * 60 * 60);
+  if (ageHours > 24) {
+    localStorage.removeItem('story_draft');
+    return;
+  }
+  
+  // لو في قصة فعلاً في النموذج، ما نستعرضش المسودة
+  if (document.getElementById('story-id').value || document.getElementById('story-content').value) {
+    return;
+  }
+  
+  // 🔍 افحص إن المسودة مش نفس محتوى أي قصة موجودة (يعني فعلاً اتحفظت بالفعل)
+  if (stories && stories.length > 0) {
+    const draftTitle = (draft.title || '').trim();
+    const draftContentStart = draft.content.trim().substring(0, 200);
+    const alreadySaved = stories.some(s => {
+      const sameTitle = s.title && s.title.trim() === draftTitle;
+      const sameContent = s.content && s.content.trim().substring(0, 200) === draftContentStart;
+      return sameTitle || sameContent;
+    });
+    if (alreadySaved) {
+      // القصة اتحفظت فعلاً، امسح المسودة
+      localStorage.removeItem('story_draft');
+      return;
+    }
+  }
+  
+  if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
+    document.getElementById('story-title').value = draft.title || '';
+    document.getElementById('story-content').value = draft.content || '';
+    document.getElementById('story-author').value = draft.author || '';
+    if (draft.category) document.getElementById('story-category').value = draft.category;
+    updateLiveStats();
+  } else {
+    // لو قال إلغاء، امسح المسودة عشان مايطلبش تاني
+    localStorage.removeItem('story_draft');
+  }
+}
+
+// 🎯 تعديل applyPendingText يحفظ في History تلقائياً
+const _originalApplyPendingText = window.applyPendingText;
+window.applyPendingText = function() {
+  const oldText = document.getElementById('story-content').value;
+  const newText = pendingAIText;
+  if (oldText && newText && oldText !== newText) {
+    saveToHistory('ai_apply', oldText, newText);
+  }
+  _originalApplyPendingText.call(this);
+  updateLiveStats();
+};
+
+// تشغيل عند البداية
+setTimeout(() => {
+  updateLiveStats();
+  setTimeout(restoreDraft, 1500); // بعد ما اللوحة تفتح
+}, 500);
+
+// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// 🎙️ TEXT-TO-SPEECH - Browser Native (Simple & Reliable)
+// ═══════════════════════════════════════════════════════════
+
+let ttsState = {
+  voices: [],
+  utterance: null,
+  isPlaying: false,
+  isPaused: false,
+  recordedBlob: null,
+  recordedUrl: null
+};
+
+// تحميل الأصوات المتاحة من المتصفح
+function loadBrowserVoices() {
+  if (!('speechSynthesis' in window)) return;
+  
+  const voices = window.speechSynthesis.getVoices();
+  // فلترة الأصوات العربية أولاً، ثم نضيف الباقي لو فاضي
+  let arabicVoices = voices.filter(v => 
+    v.lang.toLowerCase().startsWith('ar') || 
+    v.name.toLowerCase().includes('arab')
+  );
+  
+  ttsState.voices = arabicVoices.length > 0 ? arabicVoices : voices;
+  populateVoiceDropdown();
+}
+
+function populateVoiceDropdown() {
+  const select = document.getElementById('tts-voice');
+  if (!select) return;
+  
+  if (ttsState.voices.length === 0) {
+    select.innerHTML = '<option value="">⚠️ لا توجد أصوات متاحة في متصفحك</option>';
+    return;
+  }
+  
+  // تجميع حسب اللغة
+  const langNames = {
+    'ar-EG': '🇪🇬 مصري', 'ar-SA': '🇸🇦 سعودي', 'ar-AE': '🇦🇪 إماراتي',
+    'ar-JO': '🇯🇴 أردني', 'ar-LB': '🇱🇧 لبناني', 'ar-MA': '🇲🇦 مغربي',
+    'ar-DZ': '🇩🇿 جزائري', 'ar-TN': '🇹🇳 تونسي', 'ar-IQ': '🇮🇶 عراقي',
+    'ar-KW': '🇰🇼 كويتي', 'ar-QA': '🇶🇦 قطري', 'ar-BH': '🇧🇭 بحريني',
+    'ar-OM': '🇴🇲 عماني', 'ar-YE': '🇾🇪 يمني', 'ar-LY': '🇱🇾 ليبي',
+    'ar-SY': '🇸🇾 سوري', 'ar-PS': '🇵🇸 فلسطيني', 'ar-XA': '🌍 عربي عام',
+    'ar': '🌍 عربي'
+  };
+  
+  const grouped = {};
+  ttsState.voices.forEach(v => {
+    const key = v.lang;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(v);
+  });
+  
+  // ترتيب: مصري -> سعودي -> الباقي
+  const sortedLangs = Object.keys(grouped).sort((a, b) => {
+    const order = ['ar-EG', 'ar-SA', 'ar-AE', 'ar-JO', 'ar-LB', 'ar-MA'];
+    const aIdx = order.indexOf(a);
+    const bIdx = order.indexOf(b);
+    if (aIdx !== -1 && bIdx === -1) return -1;
+    if (aIdx === -1 && bIdx !== -1) return 1;
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+    return a.localeCompare(b);
+  });
+  
+  let html = '';
+  sortedLangs.forEach(lang => {
+    const groupName = langNames[lang] || `🌍 ${lang}`;
+    html += `<optgroup label="${groupName}">`;
+    grouped[lang].forEach(v => {
+      const localBadge = v.localService ? ' ⚡' : ' ☁️';
+      html += `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}${localBadge}</option>`;
+    });
+    html += `</optgroup>`;
+  });
+  
+  select.innerHTML = html;
+  
+  const savedVoice = localStorage.getItem('tts_voice');
+  if (savedVoice && ttsState.voices.find(v => v.name === savedVoice)) {
+    select.value = savedVoice;
+  }
+}
+
+// تحميل الأصوات (لازم نستنى عشان voiceschanged)
+if ('speechSynthesis' in window) {
+  loadBrowserVoices();
+  window.speechSynthesis.onvoiceschanged = loadBrowserVoices;
+}
+
+function openTTSModal() {
+  const content = document.getElementById('story-content').value.trim();
+  if (!content) return toast('اكتب محتوى القصة أولاً', 'error');
+  
+  if (!('speechSynthesis' in window)) {
+    return toast('متصفحك لا يدعم تحويل النص لصوت', 'error');
+  }
+  
+  // تحديث قائمة الأصوات
+  loadBrowserVoices();
+  
+  // إخفاء القسم القديم
+  document.getElementById('tts-result').style.display = 'none';
+  document.getElementById('tts-record-section').style.display = 'none';
+  
+  // إعادة ضبط الأزرار
+  document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+  document.getElementById('tts-pause-btn').style.display = 'none';
+  
+  document.getElementById('tts-modal').classList.add('show');
+}
+
+function closeTTSModal() {
+  stopTTSPlayback();
+  document.getElementById('tts-modal').classList.remove('show');
+  if (ttsState.recordedUrl) {
+    URL.revokeObjectURL(ttsState.recordedUrl);
+    ttsState.recordedUrl = null;
+    ttsState.recordedBlob = null;
+  }
+}
+
+// ▶️ تشغيل الصوت
+function playTTS() {
+  if (ttsState.isPlaying) {
+    // لو شغال، نوقفه
+    stopTTSPlayback();
+    return;
+  }
+  
+  const text = document.getElementById('story-content').value.trim();
+  if (!text) return toast('النص فارغ', 'error');
+  
+  const voiceName = document.getElementById('tts-voice').value;
+  const voice = ttsState.voices.find(v => v.name === voiceName);
+  if (!voice) return toast('اختر صوت أولاً', 'error');
+  
+  localStorage.setItem('tts_voice', voiceName);
+  
+  // امسح أي قراءة سابقة
+  window.speechSynthesis.cancel();
+  
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = voice;
+  utterance.lang = voice.lang;
+  utterance.rate = parseFloat(document.getElementById('tts-rate').value) || 1.0;
+  utterance.pitch = parseFloat(document.getElementById('tts-pitch').value) || 1.0;
+  utterance.volume = 1.0;
+  
+  ttsState.utterance = utterance;
+  ttsState.isPlaying = true;
+  ttsState.isPaused = false;
+  
+  utterance.onstart = () => {
+    document.getElementById('tts-play-btn').textContent = '⏹️ إيقاف';
+    document.getElementById('tts-pause-btn').style.display = 'inline-block';
+    document.getElementById('tts-pause-btn').textContent = '⏸️ إيقاف مؤقت';
+  };
+  
+  utterance.onend = () => {
+    ttsState.isPlaying = false;
+    ttsState.isPaused = false;
+    document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+    document.getElementById('tts-pause-btn').style.display = 'none';
+  };
+  
+  utterance.onerror = (e) => {
+    ttsState.isPlaying = false;
+    ttsState.isPaused = false;
+    document.getElementById('tts-play-btn').textContent = '▶️ تشغيل';
+    document.getElementById('tts-pause-btn').style.display = 'none';
+    if (e.error !== 'interrupted' && e.error !== 'canceled') {
+      toast('خطأ: ' + e.error, 'error');
+    }
+  };
+  
+  window.speechSynthesis.speak(utterance);
+}
+
+function pauseResumeTTS() {
+  if (!ttsState.isPlaying) return;
+  
+  if (ttsState.isPaused) {
+    window.speechSynthesis.resume();
+    ttsState.isPaused = false;
+    document.getElementById('tts-pause-btn').textContent = '⏸️ إيقاف مؤقت';
+  } else {
+    window.speechSynthesis.pause();
+    ttsState.isPaused = true;
+    document.getElementById('tts-pause-btn').textContent = '▶️ استئناف';
+  }
+}
+
+function stopTTSPlayback() {
+  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    window.speechSynthesis.cancel();
+  }
+  ttsState.isPlaying = false;
+  ttsState.isPaused = false;
+  ttsState.utterance = null;
+  
+  const playBtn = document.getElementById('tts-play-btn');
+  const pauseBtn = document.getElementById('tts-pause-btn');
+  if (playBtn) playBtn.textContent = '▶️ تشغيل';
+  if (pauseBtn) pauseBtn.style.display = 'none';
+}
+
+// 🎙️ تسجيل الصوت كملف للتنزيل
+async function recordTTSAudio() {
+  const text = document.getElementById('story-content').value.trim();
+  if (!text) return toast('النص فارغ', 'error');
+  
+  const voiceName = document.getElementById('tts-voice').value;
+  const voice = ttsState.voices.find(v => v.name === voiceName);
+  if (!voice) return toast('اختر صوت أولاً', 'error');
+  
+  // أولاً امسح أي قراءة شغالة
+  stopTTSPlayback();
+  
+  const recordBtn = document.getElementById('tts-record-btn');
+  recordBtn.disabled = true;
+  recordBtn.textContent = '⏳ جاري التحضير...';
+  
+  let stream = null;
+  let recorder = null;
+  
+  try {
+    // اطلب إذن مشاركة الشاشة مع الصوت
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: 1, height: 1 }, // أقل دقة عشان نوفر موارد
+      audio: true,
+      preferCurrentTab: true
+    });
+    
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      stream.getTracks().forEach(t => t.stop());
+      toast('⚠️ لازم تختار "Share tab audio" - حاول تاني', 'error');
+      return;
+    }
+    
+    // أوقف video tracks (مش محتاجينها)
+    stream.getVideoTracks().forEach(t => t.stop());
+    
+    // اعمل audio-only stream
+    const audioStream = new MediaStream(audioTracks);
+    
+    // اختار أفضل format
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/mp4';
+    
+    recorder = new MediaRecorder(audioStream, { 
+      mimeType, 
+      audioBitsPerSecond: 128000 
+    });
+    
+    const chunks = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+    
+    const recordingPromise = new Promise((resolve, reject) => {
+      recorder.onstop = () => {
+        audioStream.getTracks().forEach(t => t.stop());
+        if (chunks.length === 0) {
+          reject(new Error('لم يتم تسجيل أي صوت'));
+        } else {
+          const blob = new Blob(chunks, { type: mimeType });
+          resolve(blob);
+        }
+      };
+      recorder.onerror = (e) => {
+        audioStream.getTracks().forEach(t => t.stop());
+        reject(new Error('خطأ في التسجيل'));
+      };
+    });
+    
+    recorder.start(100);
+    recordBtn.textContent = '🔴 جاري التسجيل... (لا تغلق التاب)';
+    
+    // ابدأ تشغيل الصوت
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+    utterance.rate = parseFloat(document.getElementById('tts-rate').value) || 1.0;
+    utterance.pitch = parseFloat(document.getElementById('tts-pitch').value) || 1.0;
+    
+    const speechPromise = new Promise((resolve, reject) => {
+      utterance.onend = resolve;
+      utterance.onerror = (e) => reject(new Error('خطأ في القراءة: ' + e.error));
+    });
+    
+    window.speechSynthesis.speak(utterance);
+    
+    // استنى لما يخلص الكلام
+    await speechPromise;
+    
+    // استنى ثانية إضافية عشان آخر صوت يتسجل
+    await new Promise(r => setTimeout(r, 1000));
+    
+    // وقف التسجيل
+    recorder.stop();
+    
+    // استلم الـ blob
+    const blob = await recordingPromise;
+    
+    // اعرض النتيجة
+    if (ttsState.recordedUrl) URL.revokeObjectURL(ttsState.recordedUrl);
+    ttsState.recordedBlob = blob;
+    ttsState.recordedUrl = URL.createObjectURL(blob);
+    
+    const audio = document.getElementById('tts-audio');
+    audio.src = ttsState.recordedUrl;
+    
+    const sizeKB = (blob.size / 1024).toFixed(0);
+    const ext = mimeType.includes('mp4') ? 'M4A' : 'WebM';
+    document.getElementById('tts-info').textContent = `${voice.name} • ${sizeKB} KB • ${ext}`;
+    
+    document.getElementById('tts-result').style.display = 'block';
+    toast('✓ تم التسجيل بنجاح', 'success');
+    
+  } catch (err) {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (err.name === 'NotAllowedError') {
+      toast('لم يتم منح إذن المشاركة', 'error');
+    } else {
+      toast('خطأ: ' + err.message, 'error');
+    }
+    console.error('[TTS Record]', err);
+  } finally {
+    recordBtn.disabled = false;
+    recordBtn.textContent = '🎙️ تسجيل وتنزيل ملف';
+  }
+}
+
+function showRecordSection() {
+  document.getElementById('tts-record-section').style.display = 'block';
+}
+
+function downloadTTS() {
+  if (!ttsState.recordedUrl) return toast('لا يوجد ملف للتحميل', 'error');
+  
+  const ext = (document.getElementById('tts-info').textContent.includes('M4A')) ? 'm4a' : 'webm';
+  const title = document.getElementById('story-title').value.trim() || 'story';
+  const filename = title
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '_')
+    .substring(0, 60) + '.' + ext;
+  
+  const a = document.createElement('a');
+  a.href = ttsState.recordedUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  
+  toast('✓ تم بدء التحميل', 'success');
+}
+
+// ═══════════════════════════════════════════════════════════
+
+init();
+</script>
+</body>
+</html>
