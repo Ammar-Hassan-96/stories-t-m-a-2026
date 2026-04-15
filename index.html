@@ -54,9 +54,68 @@
   .ai-loading { text-align: center; padding: 30px; color: #d4af37; }
   .spinner { display: inline-block; width: 30px; height: 30px; border: 3px solid #1e4976; border-top-color: #d4af37; border-radius: 50%; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* 🏆 Elite Edition Styles */
+  .word-counter { display: inline-block; padding: 6px 14px; background: #0a1929; border-radius: 20px; color: #d4af37; font-size: 13px; font-weight: bold; margin-left: 10px; border: 1px solid #1e4976; }
+  .word-counter.live { animation: pulse 1.5s infinite; }
+  
+  /* Streaming text effect */
+  .streaming-text { background: #0a1929; padding: 18px; border-radius: 10px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 15px; line-height: 1.8; border: 1px solid #1e4976; position: relative; }
+  .streaming-text::after { content: '▋'; color: #d4af37; animation: blink 0.8s infinite; }
+  .streaming-text.done::after { content: ''; }
+  @keyframes blink { 50% { opacity: 0; } }
+  
+  /* Style picker for image generation */
+  .style-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0; }
+  .style-card { background: #0a1929; padding: 14px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: 0.2s; text-align: center; }
+  .style-card:hover { border-color: #d4af37; transform: translateY(-2px); }
+  .style-card.selected { border-color: #d4af37; background: linear-gradient(135deg, #1a3a5e, #132f4c); }
+  .style-card .emoji { font-size: 28px; }
+  .style-card .name { color: #d4af37; font-weight: bold; margin-top: 6px; font-size: 14px; }
+  .style-card .desc { color: #90a4ae; font-size: 11px; margin-top: 4px; }
+  
+  /* History panel */
+  .history-panel { background: #0a1929; border-radius: 10px; padding: 14px; max-height: 200px; overflow-y: auto; }
+  .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #1e4976; cursor: pointer; transition: 0.2s; }
+  .history-item:hover { background: #132f4c; }
+  .history-item .info { flex: 1; }
+  .history-item .label { color: #d4af37; font-size: 13px; font-weight: bold; }
+  .history-item .meta { color: #90a4ae; font-size: 11px; margin-top: 2px; }
+  
+  /* Auto-save indicator */
+  .autosave-indicator { position: fixed; bottom: 20px; left: 20px; padding: 8px 16px; background: rgba(46, 125, 50, 0.9); color: #fff; border-radius: 20px; font-size: 12px; opacity: 0; transition: opacity 0.3s; z-index: 999; }
+  .autosave-indicator.show { opacity: 1; }
+  
+  /* Quality score */
+  .quality-score { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-left: 8px; }
+  .quality-score.high { background: #2e7d32; color: #fff; }
+  .quality-score.medium { background: #f57c00; color: #fff; }
+  .quality-score.low { background: #757575; color: #fff; }
+  
+  /* Keyboard shortcut hint */
+  kbd { display: inline-block; padding: 2px 6px; background: #1e4976; border-radius: 4px; font-size: 11px; font-family: monospace; color: #d4af37; border: 1px solid #2c5d8c; }
+  
+  /* Diff highlighting */
+  .diff-add { background: rgba(46, 125, 50, 0.3); padding: 2px 4px; border-radius: 3px; }
+  .diff-remove { background: rgba(211, 47, 47, 0.3); padding: 2px 4px; border-radius: 3px; text-decoration: line-through; opacity: 0.7; }
+  
+  /* Settings button */
+  .settings-btn { position: fixed; top: 20px; right: 20px; background: #132f4c; border: 1px solid #d4af37; color: #d4af37; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; font-size: 20px; z-index: 100; transition: 0.2s; padding: 0; margin: 0; }
+  .settings-btn:hover { background: #d4af37; color: #132f4c; transform: rotate(45deg); }
+  
+  /* Progress bar for long operations */
+  .progress-bar { height: 4px; background: #1e4976; border-radius: 2px; overflow: hidden; margin: 10px 0; }
+  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #d4af37, #f9d56e); width: 0; transition: width 0.3s; animation: progressShimmer 2s infinite; }
+  @keyframes progressShimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+  
+  /* Modal sizes */
+  .ai-modal-content.large { max-width: 900px; }
+  .ai-modal-content.xlarge { max-width: 1100px; }
 </style>
 </head>
 <body>
+<button class="settings-btn" onclick="openSettings()" title="الإعدادات (Ctrl+,)">⚙️</button>
+<div class="autosave-indicator" id="autosave-indicator">💾 تم الحفظ تلقائياً</div>
 <div class="container">
 
 <!-- إعدادات Supabase -->
@@ -98,8 +157,8 @@
     <div class="ai-row">
       <button class="ai-btn" onclick="aiSuggestTitles()">✨ اقتراح عناوين جميلة</button>
     </div>
-    <label>محتوى القصة</label>
-    <textarea id="story-content" placeholder="اكتب القصة هنا..."></textarea>
+    <label>محتوى القصة <span id="live-word-counter" class="word-counter">0 كلمة</span> <span id="quality-badge"></span></label>
+    <textarea id="story-content" placeholder="اكتب القصة هنا... (Ctrl+E للتطويل، Ctrl+I للتحسين)" oninput="updateLiveStats()"></textarea>
     <div class="ai-row">
       <button class="ai-btn" onclick="aiAction('improve_content')">📝 تحسين الصياغة</button>
       <button class="ai-btn" onclick="aiAction('expand_content')">📏 تطويل القصة</button>
@@ -172,10 +231,75 @@
 
   <!-- مودال AI -->
   <div class="ai-modal" id="ai-modal">
-    <div class="ai-modal-content">
+    <div class="ai-modal-content large" id="ai-modal-content">
       <h3 id="ai-modal-title" style="color:#d4af37;margin-bottom:14px">✨ اقتراحات الذكاء الاصطناعي</h3>
       <div id="ai-modal-body"></div>
       <button class="secondary" onclick="closeAIModal()" style="margin-top:14px">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- مودال الإعدادات -->
+  <div class="ai-modal" id="settings-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">⚙️ الإعدادات</h3>
+      
+      <label>🔑 Gemini API Key</label>
+      <input id="settings-gemini-key" type="password" placeholder="AIzaSy...">
+      <small style="color:#90a4ae;display:block;margin-top:4px">احصل عليه من <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#d4af37">aistudio.google.com</a></small>
+      
+      <label style="margin-top:18px">🎨 نمط الصور المفضل</label>
+      <div class="style-grid">
+        <div class="style-card" data-style="cinematic" onclick="selectStyle('cinematic')">
+          <div class="emoji">🎬</div>
+          <div class="name">سينمائي</div>
+          <div class="desc">جودة أفلام IMAX</div>
+        </div>
+        <div class="style-card" data-style="photorealistic" onclick="selectStyle('photorealistic')">
+          <div class="emoji">📸</div>
+          <div class="name">واقعي</div>
+          <div class="desc">8K تصوير احترافي</div>
+        </div>
+        <div class="style-card" data-style="anime" onclick="selectStyle('anime')">
+          <div class="emoji">🎭</div>
+          <div class="name">أنمي</div>
+          <div class="desc">Studio Ghibli</div>
+        </div>
+        <div class="style-card" data-style="digital_art" onclick="selectStyle('digital_art')">
+          <div class="emoji">🎨</div>
+          <div class="name">رسم رقمي</div>
+          <div class="desc">ArtStation تصميم</div>
+        </div>
+        <div class="style-card" data-style="dark_fantasy" onclick="selectStyle('dark_fantasy')">
+          <div class="emoji">🌙</div>
+          <div class="name">خيال داكن</div>
+          <div class="desc">قوطي مظلم</div>
+        </div>
+      </div>
+
+      <label style="margin-top:18px">⌨️ اختصارات لوحة المفاتيح</label>
+      <div style="background:#0a1929;padding:12px;border-radius:8px;font-size:13px;line-height:2">
+        <div><kbd>Ctrl+S</kbd> حفظ القصة</div>
+        <div><kbd>Ctrl+E</kbd> تطويل القصة</div>
+        <div><kbd>Ctrl+I</kbd> تحسين الصياغة</div>
+        <div><kbd>Ctrl+H</kbd> سجل التغييرات</div>
+        <div><kbd>Ctrl+,</kbd> فتح الإعدادات</div>
+        <div><kbd>Esc</kbd> إغلاق المودال</div>
+      </div>
+      
+      <div class="row" style="margin-top:18px">
+        <button onclick="saveSettings()">💾 حفظ الإعدادات</button>
+        <button class="secondary" onclick="closeSettings()">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- مودال السجل -->
+  <div class="ai-modal" id="history-modal">
+    <div class="ai-modal-content">
+      <h3 style="color:#d4af37;margin-bottom:14px">📜 سجل التغييرات</h3>
+      <p style="color:#90a4ae;font-size:13px;margin-bottom:10px">يحفظ آخر 10 نسخ من القصة الحالية تلقائياً</p>
+      <div id="history-list" class="history-panel"></div>
+      <button class="secondary" onclick="closeHistory()" style="margin-top:14px">إغلاق</button>
     </div>
   </div>
 
@@ -762,6 +886,250 @@ function toast(msg, type) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3000);
 }
+
+// ═══════════════════════════════════════════════════════════
+// 🏆 ELITE EDITION - Advanced Features
+// ═══════════════════════════════════════════════════════════
+
+// 📊 إحصائيات حية للنص
+function updateLiveStats() {
+  const text = document.getElementById('story-content').value.trim();
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+  const counter = document.getElementById('live-word-counter');
+  if (counter) counter.textContent = wordCount.toLocaleString('ar-EG') + ' كلمة';
+  
+  // تقييم الجودة التلقائي
+  const badge = document.getElementById('quality-badge');
+  if (badge) {
+    if (wordCount === 0) {
+      badge.innerHTML = '';
+    } else if (wordCount < 200) {
+      badge.innerHTML = '<span class="quality-score low">قصة قصيرة</span>';
+    } else if (wordCount < 1500) {
+      badge.innerHTML = '<span class="quality-score medium">قصة متوسطة</span>';
+    } else if (wordCount < 5000) {
+      badge.innerHTML = '<span class="quality-score high">قصة طويلة</span>';
+    } else {
+      badge.innerHTML = '<span class="quality-score high">قصة ضخمة 🏆</span>';
+    }
+  }
+  
+  // حفظ تلقائي محلي
+  scheduleAutoSave();
+}
+
+// 💾 حفظ تلقائي محلي (كل 3 ثواني بعد التوقف عن الكتابة)
+let autoSaveTimer;
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    const draft = {
+      title: document.getElementById('story-title').value,
+      content: document.getElementById('story-content').value,
+      author: document.getElementById('story-author').value,
+      category: document.getElementById('story-category').value,
+      timestamp: Date.now()
+    };
+    if (draft.content) {
+      localStorage.setItem('story_draft', JSON.stringify(draft));
+      const indicator = document.getElementById('autosave-indicator');
+      indicator.classList.add('show');
+      setTimeout(() => indicator.classList.remove('show'), 2000);
+    }
+  }, 3000);
+}
+
+// 📜 سجل التغييرات (يحفظ آخر 10 نسخ)
+function saveToHistory(action, oldText, newText) {
+  if (!oldText || oldText === newText) return;
+  let history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  history.unshift({
+    action,
+    oldText,
+    newText,
+    timestamp: Date.now(),
+    oldWords: oldText.trim().split(/\s+/).filter(Boolean).length,
+    newWords: newText.trim().split(/\s+/).filter(Boolean).length
+  });
+  history = history.slice(0, 10); // آخر 10 بس
+  localStorage.setItem('story_history', JSON.stringify(history));
+}
+
+function showHistory() {
+  const history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  const list = document.getElementById('history-list');
+  if (history.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل بعد</p>';
+  } else {
+    const actionNames = {
+      improve_content: '📝 تحسين الصياغة',
+      expand_content: '📏 تطويل القصة',
+      continue_expand: '🚀 تطويل إضافي',
+      fix_grammar: '✅ تصحيح لغوي',
+      generate_story: '💡 توليد قصة'
+    };
+    list.innerHTML = history.map((h, i) => `
+      <div class="history-item" onclick="restoreFromHistory(${i})">
+        <div class="info">
+          <div class="label">${actionNames[h.action] || h.action}</div>
+          <div class="meta">${new Date(h.timestamp).toLocaleString('ar-EG')} • ${h.oldWords} → ${h.newWords} كلمة</div>
+        </div>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();restoreFromHistory(${i})">↶ استعادة</button>
+      </div>
+    `).join('');
+  }
+  document.getElementById('history-modal').classList.add('show');
+}
+
+function restoreFromHistory(index) {
+  const history = JSON.parse(localStorage.getItem('story_history') || '[]');
+  if (!history[index]) return;
+  if (!confirm('استبدال النص الحالي بالنسخة القديمة؟')) return;
+  document.getElementById('story-content').value = history[index].oldText;
+  updateLiveStats();
+  closeHistory();
+  toast('تمت الاستعادة ↶', 'success');
+}
+
+function closeHistory() {
+  document.getElementById('history-modal').classList.remove('show');
+}
+
+// ⚙️ الإعدادات
+function openSettings() {
+  document.getElementById('settings-gemini-key').value = localStorage.getItem('gemini_key') || '';
+  const savedStyle = localStorage.getItem('image_style') || 'cinematic';
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.style === savedStyle);
+  });
+  document.getElementById('settings-modal').classList.add('show');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('show');
+}
+
+function selectStyle(style) {
+  document.querySelectorAll('.style-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.style === style);
+  });
+  localStorage.setItem('image_style', style);
+}
+
+function saveSettings() {
+  const key = document.getElementById('settings-gemini-key').value.trim();
+  if (key) {
+    GEMINI_KEY = key;
+    localStorage.setItem('gemini_key', key);
+  }
+  const selected = document.querySelector('.style-card.selected');
+  if (selected) localStorage.setItem('image_style', selected.dataset.style);
+  closeSettings();
+  toast('✓ تم حفظ الإعدادات', 'success');
+}
+
+// ⌨️ اختصارات لوحة المفاتيح
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 's') { e.preventDefault(); saveStory(); }
+    else if (e.key === 'e') { e.preventDefault(); aiAction('expand_content'); }
+    else if (e.key === 'i') { e.preventDefault(); aiAction('improve_content'); }
+    else if (e.key === 'h') { e.preventDefault(); showHistory(); }
+    else if (e.key === ',') { e.preventDefault(); openSettings(); }
+  } else if (e.key === 'Escape') {
+    document.querySelectorAll('.ai-modal.show').forEach(m => m.classList.remove('show'));
+  }
+});
+
+// 🔄 استرجاع المسودة عند فتح اللوحة
+function restoreDraft() {
+  const draft = JSON.parse(localStorage.getItem('story_draft') || 'null');
+  if (!draft || !draft.content) return;
+  
+  // فقط لو المسودة جديدة (آخر يوم) ومش في تعديل قصة موجودة
+  const ageHours = (Date.now() - draft.timestamp) / (1000 * 60 * 60);
+  if (ageHours > 24) return;
+  
+  if (!document.getElementById('story-id').value && !document.getElementById('story-content').value) {
+    if (confirm(`في مسودة محفوظة من ${new Date(draft.timestamp).toLocaleString('ar-EG')}.\nتريد استرجاعها؟`)) {
+      document.getElementById('story-title').value = draft.title || '';
+      document.getElementById('story-content').value = draft.content || '';
+      document.getElementById('story-author').value = draft.author || '';
+      if (draft.category) document.getElementById('story-category').value = draft.category;
+      updateLiveStats();
+    }
+  }
+}
+
+// 🎨 تحديث aiGenerateImage يستخدم الـ style المحفوظ
+const originalAiGenerateImage = window.aiGenerateImage;
+async function aiGenerateImageWithStyle() {
+  const title = document.getElementById('story-title').value.trim();
+  const content = document.getElementById('story-content').value.trim();
+  if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
+
+  showLoading('🎨 جاري توليد الصورة... (30-60 ثانية)');
+  try {
+    const category = document.getElementById('story-category').value;
+    const style = localStorage.getItem('image_style') || 'cinematic';
+    
+    // استدعاء Backend (يستخدم Gemini Director + Pollinations Flux)
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate_image', title, content, category, style })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'فشل التوليد');
+    
+    // تحويل base64 للملف ورفعه على Supabase
+    const byteChars = atob(data.image);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+    const file = new File([blob], `ai_${Date.now()}.png`, { type: 'image/png' });
+    
+    const imageUrl = await uploadImage(file);
+    document.getElementById('current-image-url').value = imageUrl;
+    const img = document.getElementById('preview');
+    img.src = imageUrl;
+    img.style.display = 'block';
+    
+    closeAIModal();
+    toast(`✓ تم توليد الصورة (${data.style})`, 'success');
+  } catch (e) {
+    toast(e.message || 'حصل خطأ', 'error');
+    closeAIModal();
+  }
+}
+// استبدال الـ function القديمة
+window.aiGenerateImage = aiGenerateImageWithStyle;
+
+// 🎯 Hook على aiAction عشان يحفظ في History
+const _originalAiAction = window.aiAction;
+window.aiAction = async function(action) {
+  const oldText = document.getElementById('story-content').value;
+  await _originalAiAction.call(this, action);
+  // الحفظ في History هيتم في applyPendingText
+};
+
+// تعديل applyPendingText يحفظ في history
+const _originalApplyPendingText = window.applyPendingText;
+window.applyPendingText = function() {
+  const oldText = document.getElementById('story-content').value;
+  const newText = pendingAIText;
+  if (oldText && newText && oldText !== newText) {
+    saveToHistory('ai_apply', oldText, newText);
+  }
+  _originalApplyPendingText.call(this);
+  updateLiveStats();
+};
+
+// تشغيل عند البداية
+setTimeout(() => {
+  updateLiveStats();
+  setTimeout(restoreDraft, 1500); // بعد ما اللوحة تفتح
+}, 500);
 
 init();
 </script>
