@@ -145,6 +145,7 @@
     <div class="stat"><div class="stat-num" id="stat-total">0</div><div class="stat-label">إجمالي القصص</div></div>
     <div class="stat"><div class="stat-num" id="stat-pub">0</div><div class="stat-label">منشورة</div></div>
     <div class="stat"><div class="stat-num" id="stat-draft">0</div><div class="stat-label">مسودات</div></div>
+    <div class="stat" style="border-right-color: #16a085;"><div class="stat-num" id="stat-reviewed" style="color: #16a085;">0</div><div class="stat-label">تمت مراجعتها ✅</div></div>
     <div class="stat"><div class="stat-num" id="stat-last">-</div><div class="stat-label">آخر تحديث</div></div>
   </div>
 
@@ -484,22 +485,8 @@ async function callAI(payload) {
   isLoading = true;
 
   try {
-    // 🎨 الصور تمشي عبر Netlify (لأن Pollinations يحتاج backend)
-    if (payload.action === 'generate_image') {
-      const res = await fetch(AI_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); }
-      catch { throw new Error("السيرفر رجع رد غير متوقع"); }
-      if (!res.ok || data.error) throw new Error(data.error || "حصل خطأ");
-      return data;
-    }
-
-    // 💬 النصوص تمشي مباشرة من المتصفح لـ Gemini (مفيش timeout)
+    // ملاحظة: generate_image بقى client-side بالكامل في aiGenerateImage()
+    // كل النصوص تمشي مباشرة من المتصفح لـ Gemini (مفيش timeout)
     if (!ensureGeminiKey()) {
       throw new Error("لازم تدخل Gemini API Key");
     }
@@ -698,6 +685,8 @@ async function aiSuggestCategory() {
 
 // توليد صورة
 // 🎨 توليد صورة احترافية - Backend بـ Gemini Director + Pollinations
+// 🎨 توليد صور احترافي - مباشرة من المتصفح (بلا حدود وقت)
+// Gemini يقرأ القصة → يولد prompt إنجليزي → Pollinations Turbo/Flux يولد الصورة
 async function aiGenerateImage() {
   const title = document.getElementById('story-title').value.trim();
   const content = document.getElementById('story-content').value.trim();
@@ -705,36 +694,127 @@ async function aiGenerateImage() {
   const style = localStorage.getItem('image_style') || 'cinematic';
 
   if (!title || !content) return toast('اكتب العنوان والمحتوى أولاً', 'error');
+  if (!ensureGeminiKey()) return toast('محتاج Gemini API Key', 'error');
   
-  showLoading('🎨 جاري تحليل القصة وتوليد مشهد سينمائي... (10-30 ثانية)');
+  // إعدادات الأنماط البصرية
+  const STYLE_PROFILES = {
+    cinematic: "cinematic film still, ARRI Alexa, anamorphic lens, dramatic lighting, IMAX quality, hyper-detailed, professional color grading",
+    photorealistic: "ultra-photorealistic, 8K, intricate details, professional photography, sharp focus, realistic textures",
+    anime: "high-quality anime, Studio Ghibli style, vibrant colors, expressive characters, detailed background",
+    digital_art: "stunning digital painting, ArtStation trending, concept art, masterpiece quality",
+    dark_fantasy: "dark fantasy, gothic atmosphere, eerie mood, dramatic shadows, oil painting style"
+  };
+  
+  // إعدادات بصرية حسب التصنيف
+  const CATEGORY_VISUALS = {
+    horror: { mood: "horror, eerie, terrifying, dark shadows, supernatural", lighting: "low-key chiaroscuro, candlelight, moonlight through fog" },
+    drama: { mood: "emotional, intimate, melancholic", lighting: "warm golden hour, soft natural light" },
+    kids: { mood: "cheerful, magical, wholesome, vibrant", lighting: "bright soft daylight, sparkly highlights" },
+    "sci-fi": { mood: "futuristic, technological, cyberpunk", lighting: "neon lights, holographic glow, electric blue" },
+    thriller: { mood: "suspenseful, tense, mysterious, noir", lighting: "harsh contrast, single light source, deep shadows" },
+    islamic: { mood: "spiritual, serene, sacred, peaceful", lighting: "warm golden light, sunset over desert" },
+    love: { mood: "romantic, tender, warm, dreamy", lighting: "soft sunset, candlelight, bokeh background" }
+  };
+  
+  const styleHint = STYLE_PROFILES[style] || STYLE_PROFILES.cinematic;
+  const catVisual = CATEGORY_VISUALS[category] || { mood: "atmospheric", lighting: "dramatic cinematic lighting" };
+  
+  showLoading('🎨 الخطوة 1/2: تحليل القصة بالذكاء الاصطناعي...');
   
   try {
-    const res = await fetch(AI_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        action: 'generate_image', 
-        title, 
-        content, 
-        category,
-        style
-      })
-    });
+    // ═══ الخطوة 1: Gemini يولّد prompt دقيق ═══
+    const directorPrompt = `You are an elite concept artist creating a vivid English image generation prompt from this Arabic story.
 
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || "فشل توليد الصورة");
+═══ STORY ═══
+Title: "${title}"
+Content (excerpt): ${content.substring(0, 1500)}
 
-    // تحويل base64 لـ blob
-    const byteCharacters = atob(data.image);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+═══ TASK ═══
+Generate ONE detailed English prompt (max 350 chars) for the SINGLE most powerful visual moment in this story.
+
+The prompt MUST include:
+1. WHO: Main character(s) - appearance, clothing, age, expression, posture
+2. WHERE: Specific setting from the story (interior/exterior, time of day, location)
+3. WHAT: The exact dramatic action or frozen moment
+4. MOOD: ${catVisual.mood}
+5. LIGHTING: ${catVisual.lighting}
+6. STYLE: ${styleHint}
+
+═══ CRITICAL RULES ═══
+- Output ONLY the English prompt - no explanations, no quotes, no markdown
+- NO text/letters/words/typography in image
+- Be SPECIFIC to this story
+- If Arabic/Middle Eastern setting, describe it accurately
+
+Begin the prompt now:`;
+    
+    let imagePrompt;
+    try {
+      const generated = await callGeminiDirect("gemini-2.5-flash", directorPrompt);
+      imagePrompt = generated
+        .replace(/^["'`*]+|["'`*]+$/g, '')
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .substring(0, 800)
+        .trim() + ", no text, no letters, no watermarks";
+    } catch (e) {
+      imagePrompt = `${styleHint}, ${catVisual.mood}, ${catVisual.lighting}, masterpiece illustration of "${title}", highly detailed, professional book cover, no text`;
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], {type: 'image/png'});
-    const file = new File([blob], `ai_${style}_${Date.now()}.png`, { type: 'image/png' });
-
-    // رفع على Supabase
+    
+    console.log("[Image Prompt]", imagePrompt);
+    
+    // ═══ الخطوة 2: Pollinations - مباشرة من المتصفح (بلا timeout!) ═══
+    showLoading('🎨 الخطوة 2/2: توليد الصورة... (قد يستغرق دقيقة - مفيش حد للوقت)');
+    
+    const seed = Math.floor(Math.random() * 9999999);
+    const encodedPrompt = encodeURIComponent(imagePrompt);
+    
+    const imageSources = [
+      {
+        name: "Turbo",
+        url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&model=turbo&seed=${seed}&nologo=true`
+      },
+      {
+        name: "Flux",
+        url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&model=flux&seed=${seed}&nologo=true`
+      }
+    ];
+    
+    let imageBlob = null;
+    let usedSource = null;
+    let lastError = null;
+    
+    for (const source of imageSources) {
+      try {
+        showLoading(`🎨 جاري التوليد بـ ${source.name}... (مفيش حد للوقت)`);
+        const imgRes = await fetch(source.url);
+        if (!imgRes.ok) {
+          lastError = `${source.name} رد بـ ${imgRes.status}`;
+          console.log(`[${source.name}] فشل: ${lastError}`);
+          continue;
+        }
+        const blob = await imgRes.blob();
+        if (blob.size < 1000) {
+          lastError = `${source.name} رد بصورة فاضية`;
+          continue;
+        }
+        imageBlob = blob;
+        usedSource = source.name;
+        console.log(`[${source.name}] ✓ نجح: ${blob.size} bytes`);
+        break;
+      } catch (err) {
+        lastError = `${source.name}: ${err.message}`;
+        console.log(`[${source.name}] خطأ: ${err.message}`);
+        continue;
+      }
+    }
+    
+    if (!imageBlob) {
+      throw new Error(`فشل التوليد من جميع المصادر. آخر خطأ: ${lastError || 'غير معروف'}`);
+    }
+    
+    // ═══ رفع على Supabase ═══
+    const file = new File([imageBlob], `ai_${style}_${Date.now()}.png`, { type: 'image/png' });
     const imageUrl = await uploadImage(file);
     document.getElementById('current-image-url').value = imageUrl;
     const img = document.getElementById('preview');
@@ -743,7 +823,7 @@ async function aiGenerateImage() {
     
     closeAIModal();
     const styleNames = { cinematic: 'سينمائي', photorealistic: 'واقعي', anime: 'أنمي', digital_art: 'رسم رقمي', dark_fantasy: 'خيال داكن' };
-    toast(`✓ تم توليد صورة ${styleNames[style] || style}`, 'success');
+    toast(`✓ تم توليد صورة ${styleNames[style] || style} بـ ${usedSource}`, 'success');
   } catch (e) {
     console.error('[Image Gen]', e);
     toast(e.message || 'حصل خطأ في التوليد', 'error');
@@ -843,10 +923,10 @@ function renderStories() {
   }
   
   const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
-  
+
 list.innerHTML = `<p style="color:#90a4ae;margin-bottom:10px;font-size:13px">عرض ${filtered.length} من ${stories.length} قصة</p>` + 
 filtered.map(s => {
-  // حساب التاريخ بشكل منفصل لكل قصة
+  // التاريخ
   const rawDate = s.updated_at || s.created_at || new Date().toISOString();
   const formattedTime = new Date(rawDate).toLocaleString('ar-EG', {
     day: 'numeric',
@@ -854,10 +934,31 @@ filtered.map(s => {
     hour: '2-digit',
     minute: '2-digit'
   });
+  
+  // عدد الكلمات
+  const wordCount = s.content ? s.content.trim().split(/\s+/).filter(Boolean).length : 0;
+  const wordCountFormatted = wordCount.toLocaleString('ar-EG');
+  
+  // 📋 حالة المراجعة (من Supabase - مشتركة بين كل الادمنز)
+  // المنطق: لو reviewed_at >= updated_at → القصة مراجعة
+  // لو القصة اتعدلت بعد المراجعة، تظهر كأنها محتاجة مراجعة جديدة تلقائياً
+  const reviewedAt = s.reviewed_at ? new Date(s.reviewed_at).getTime() : 0;
+  const updatedAt = new Date(s.updated_at || s.created_at || 0).getTime();
+  const isReviewed = reviewedAt > 0 && reviewedAt >= updatedAt;
+  
+  const reviewBtnLabel = isReviewed ? '✅' : '⬜';
+  const reviewBtnTitle = isReviewed 
+    ? `تمت المراجعة في ${new Date(s.reviewed_at).toLocaleString('ar-EG', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`
+    : (reviewedAt > 0 ? 'تم تعديل القصة بعد آخر مراجعة - تحتاج لمراجعة جديدة' : 'علم القصة كمراجعة');
+  const reviewBtnStyle = isReviewed 
+    ? 'background: linear-gradient(135deg, #16a085, #27ae60); color: white;' 
+    : 'background: #1e4976; color: #90a4ae;';
+  
+  const itemOpacity = isReviewed ? 'opacity: 0.7;' : '';
+  const itemBorder = isReviewed ? 'border-right: 4px solid #16a085;' : 'border-right: 4px solid transparent;';
 
-  // يجب وجود كلمة return هنا لكي يعمل الكود
   return `
-    <div class="story-item">
+    <div class="story-item" style="${itemOpacity} ${itemBorder} transition: all 0.3s;">
       <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
       <div class="story-info">
         <div class="story-title">${escapeHtml(s.title)}</div>
@@ -866,24 +967,69 @@ filtered.map(s => {
           <span class="badge ${s.is_published ? 'pub' : 'unpub'}">${s.is_published ? 'منشورة' : 'مسودة'}</span>
           <span class="badge" style="background:#1e4976">${catNames[s.category_id] || s.category_id}</span>
           <span style="color:#90a4ae; font-size: 11px;">🔢 ترتيب: ${s.display_order}</span>
+          <span style="color:#16a085; font-size: 11px; font-weight: bold;">📝 ${wordCountFormatted} كلمة</span>
           <span style="color:#d4af37; font-size: 11px; border-right: 1px solid #1e4976; padding-right: 8px;">🕒 تحديث: ${formattedTime}</span>
         </div>
       </div>
       <div class="story-actions">
-        <button class="secondary" onclick="editStory(${s.id})">✏️</button>
-        <button class="danger" onclick="deleteStory(${s.id})">🗑️</button>
+        <button onclick="toggleReviewed(${s.id})" title="${reviewBtnTitle}" style="${reviewBtnStyle} padding: 8px 12px; font-size: 16px; min-width: 40px;">${reviewBtnLabel}</button>
+        <button class="secondary" onclick="editStory(${s.id})" title="تعديل">✏️</button>
+        <button class="danger" onclick="deleteStory(${s.id})" title="حذف">🗑️</button>
       </div>
     </div>
   `;
 }).join('');
  }
+
+// 📋 toggle حالة المراجعة لقصة (محفوظة في Supabase - مشتركة بين كل الادمنز)
+async function toggleReviewed(storyId) {
+  const story = stories.find(s => s.id === storyId);
+  if (!story) return;
+  
+  const updatedAt = new Date(story.updated_at || story.created_at || 0).getTime();
+  const reviewedAt = story.reviewed_at ? new Date(story.reviewed_at).getTime() : 0;
+  const isCurrentlyReviewed = reviewedAt > 0 && reviewedAt >= updatedAt;
+  
+  // الزرار العمل: لو مراجعة → اشيلها ، لو مش مراجعة → علّمها
+  const newReviewedAt = isCurrentlyReviewed ? null : new Date().toISOString();
+  
+  try {
+    const { error } = await sb
+      .from('stories')
+      .update({ reviewed_at: newReviewedAt })
+      .eq('id', storyId);
+    
+    if (error) throw error;
+    
+    // تحديث الـ local data
+    const idx = stories.findIndex(s => s.id === storyId);
+    if (idx !== -1) stories[idx].reviewed_at = newReviewedAt;
+    
+    toast(isCurrentlyReviewed ? 'تم إلغاء علامة المراجعة' : '✓ تم تعليم القصة كمراجعة', 'success');
+    renderStories();
+    updateStats();
+  } catch (e) {
+    console.error('[toggleReviewed]', e);
+    toast('خطأ في تحديث المراجعة: ' + e.message, 'error');
+  }
+}
 function updateStats() {
   document.getElementById('stat-total').textContent = stories.length;
   document.getElementById('stat-pub').textContent = stories.filter(s => s.is_published).length;
   document.getElementById('stat-draft').textContent = stories.filter(s => !s.is_published).length;
   
+  // عدّ القصص المراجعة من Supabase (reviewed_at >= updated_at)
+  let validReviewedCount = 0;
+  for (const story of stories) {
+    if (!story.reviewed_at) continue;
+    const reviewedAt = new Date(story.reviewed_at).getTime();
+    const updatedAt = new Date(story.updated_at || story.created_at || 0).getTime();
+    if (reviewedAt >= updatedAt) validReviewedCount++;
+  }
+  const reviewedEl = document.getElementById('stat-reviewed');
+  if (reviewedEl) reviewedEl.textContent = validReviewedCount;
+  
   if (stories.length > 0) {
-    // العثور على أحدث تاريخ تحديث بين كل القصص
     const latestStory = stories.reduce((prev, current) => {
       const prevDate = new Date(prev.updated_at || 0);
       const currentDate = new Date(current.updated_at || 0);
