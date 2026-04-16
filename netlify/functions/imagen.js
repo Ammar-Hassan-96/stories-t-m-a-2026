@@ -1,18 +1,23 @@
 /**
- * 🎨 Gemini Image Generation
- * بيستخدم gemini-2.0-flash-preview-image-generation
- * نفس GEMINI_API_KEY
+ * Gemini Image Generation - Secure Proxy
+ * ✅ API key محمي على السيرفر فقط
+ * ✅ prompt validation
  */
 
+const MAX_PROMPT_LENGTH = 2000;
+
 exports.handler = async (event) => {
+  const SITE_URL = process.env.URL || process.env.DEPLOY_URL || "";
   const headers = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": SITE_URL || "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 
   if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers, body: "" };
-  if (event.httpMethod !== "POST") return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  }
 
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_KEY) {
@@ -27,36 +32,42 @@ exports.handler = async (event) => {
   }
 
   const { prompt } = body;
-  if (!prompt) {
+  if (!prompt || typeof prompt !== "string") {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "prompt مطلوب" }) };
+  }
+  if (prompt.length > MAX_PROMPT_LENGTH) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: "prompt طويل جداً" }) };
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_KEY}`;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
     const res = await fetch(url, {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
-      })
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+      }),
     });
 
+    clearTimeout(timeoutId);
     const data = await res.json();
 
     if (!res.ok) {
       return {
         statusCode: res.status,
         headers,
-        body: JSON.stringify({ error: data.error?.message || `HTTP ${res.status}` })
+        body: JSON.stringify({ error: data.error?.message || `HTTP ${res.status}` }),
       };
     }
 
-    // استخرج الصورة من الرد
     const parts = data.candidates?.[0]?.content?.parts || [];
     let imageBase64 = null;
-
     for (const part of parts) {
       if (part.inlineData?.mimeType?.startsWith("image/")) {
         imageBase64 = part.inlineData.data;
@@ -71,10 +82,13 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ success: true, imageBase64 })
+      body: JSON.stringify({ success: true, imageBase64 }),
     };
 
   } catch (err) {
+    if (err.name === "AbortError") {
+      return { statusCode: 504, headers, body: JSON.stringify({ error: "انتهى الوقت - حاول مرة أخرى" }) };
+    }
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };

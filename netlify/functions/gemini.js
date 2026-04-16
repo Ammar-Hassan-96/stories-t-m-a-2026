@@ -1,25 +1,37 @@
 /**
- * 🏆 Gemini AI Backend - Hybrid Proxy
- * ⚡ سريع (< 10s): server يكلم Gemini مباشرة
- * 🐢 بطيء (30-60s): يرجع الـ key للـ client يكلم Gemini مباشرة (مفيش timeout)
+ * Gemini AI Backend - Secure Proxy
+ * ✅ الـ API key محمي تماماً على السيرفر - لا يُرسَل للـ client أبداً
+ * ✅ كل الطلبات تمر من هنا فقط
+ * ✅ timeout handling + input validation
  */
 
+const ALLOWED_MODELS = new Set([
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+]);
+
+const MAX_PROMPT_LENGTH = 20000;
+
 exports.handler = async (event) => {
+  const SITE_URL = process.env.URL || process.env.DEPLOY_URL || "";
   const headers = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": SITE_URL || "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 
   if (event.httpMethod === "OPTIONS") return { statusCode: 200, headers, body: "" };
-  if (event.httpMethod !== "POST") return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: "Method not allowed" }) };
+  }
 
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_KEY) {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: "GEMINI_API_KEY غير موجود في environment variables" })
+      body: JSON.stringify({ error: "GEMINI_API_KEY غير مضبوط على السيرفر" }),
     };
   }
 
@@ -30,32 +42,45 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
-  // 🐢 طلب الـ key للمهام البطيئة (client-side direct call)
+  // ⛔ مفيش get_key - الـ key لا يخرج من السيرفر أبداً
   if (body.action === "get_key") {
     return {
-      statusCode: 200,
+      statusCode: 403,
       headers,
-      body: JSON.stringify({ key: GEMINI_KEY })
+      body: JSON.stringify({ error: "غير مسموح" }),
     };
   }
 
-  // ⚡ المهام السريعة → server يكلم Gemini
   const { model, prompt } = body;
+
+  // ✅ التحقق من صحة المدخلات
   if (!model || !prompt) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "model و prompt مطلوبين" }) };
+  }
+  if (!ALLOWED_MODELS.has(model)) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: "model غير مسموح به" }) };
+  }
+  if (typeof prompt !== "string" || prompt.length > MAX_PROMPT_LENGTH) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: "prompt طويل جداً أو غير صالح" }) };
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
-      })
+        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 },
+      }),
     });
+
+    clearTimeout(timeoutId);
 
     const data = await res.json();
 
@@ -63,7 +88,7 @@ exports.handler = async (event) => {
       return {
         statusCode: res.status,
         headers,
-        body: JSON.stringify({ error: data.error?.message || `HTTP ${res.status}` })
+        body: JSON.stringify({ error: data.error?.message || `HTTP ${res.status}` }),
       };
     }
 
@@ -76,21 +101,28 @@ exports.handler = async (event) => {
       return {
         statusCode: 500,
         headers,
-        body: JSON.stringify({ error: `رد فاضي من ${model} (${reason})` })
+        body: JSON.stringify({ error: `رد فاضي من ${model} (${reason})` }),
       };
     }
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ success: true, text: text.trim(), model })
+      body: JSON.stringify({ success: true, text: text.trim(), model }),
     };
 
   } catch (err) {
+    if (err.name === "AbortError") {
+      return {
+        statusCode: 504,
+        headers,
+        body: JSON.stringify({ error: "انتهى الوقت المحدد للطلب، حاول مرة أخرى" }),
+      };
+    }
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };
