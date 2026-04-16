@@ -1151,7 +1151,7 @@ function showHistory() {
            <div class="info">
              <div class="label">
                ${_esc(actionNames[h.action] || h.action)}
-               ${h.storyTitle ? `<span style="color:#90a4ae;font-weight:normal;font-size:11px;margin-right:6px">— ${_esc(h.storyTitle)}</span>` : ''}
+               <span style="color:#90a4ae;font-weight:normal;font-size:11px;margin-right:6px">— ${_esc(h.storyTitle || 'بدون عنوان')}</span>
              </div>
              <div class="meta">${new Date(h.timestamp).toLocaleString('ar-EG')} &nbsp;•&nbsp; ${h.oldWords} → ${h.newWords} كلمة</div>
            </div>
