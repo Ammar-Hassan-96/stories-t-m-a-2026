@@ -1128,6 +1128,7 @@ function editStory(id) {
     img.style.display = 'block';
   }
   document.getElementById('form-title').textContent = '✏️ تعديل القصة';
+  updateLiveStats();
   document.getElementById('form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
