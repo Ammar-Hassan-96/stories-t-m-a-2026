@@ -1118,21 +1118,21 @@ async function loadSupabaseHistory() {
     const { data, error } = await sb
       .from('stories')
       .select('id, title, updated_at, created_at, category_id, is_published, last_action, last_action_at')
-      .not('last_action_at', 'is', null)
-      .order('last_action_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(20);
     if (error) throw error;
     if (!data || data.length === 0) {
-      list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل تعديلات AI بعد — عدّل قصة وطبّق تحسيناً أولاً</p>';
+      list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا توجد قصص</p>';
       return;
     }
     const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
     const actionColors = { 'تطويل': '#8e44ad', 'تطويل إضافي': '#e74c3c', 'تحسين الصياغة': '#2980b9', 'تصحيح لغوي': '#27ae60', 'توليد قصة': '#f39c12', 'تطبيق AI': '#16a085' };
     list.innerHTML = data.map(s => {
-      const actionDate = new Date(s.last_action_at);
-      const formattedDate = actionDate.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      const isRecent = (Date.now() - actionDate.getTime()) < 3600000;
-      const actionColor = actionColors[s.last_action] || '#d4af37';
+      // استخدم last_action_at لو موجود، وإلا updated_at
+      const displayDate = new Date(s.last_action_at || s.updated_at || s.created_at);
+      const formattedDate = displayDate.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const isRecent = (Date.now() - displayDate.getTime()) < 3600000;
+      const actionColor = s.last_action ? (actionColors[s.last_action] || '#d4af37') : '#555';
       return `<div class="history-item" onclick="editStory(${parseInt(s.id)});closeHistory()">
         <div class="info">
           <div class="label">
@@ -1140,7 +1140,10 @@ async function loadSupabaseHistory() {
             ${isRecent ? '<span style="background:#2e7d32;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px">للتو</span>' : ''}
           </div>
           <div class="meta" style="margin-top:3px">
-            <span style="background:${actionColor}22;color:${actionColor};padding:1px 8px;border-radius:10px;font-size:11px;font-weight:bold">${_esc(s.last_action || '')}</span>
+            ${s.last_action
+              ? `<span style="background:${actionColor}22;color:${actionColor};padding:1px 8px;border-radius:10px;font-size:11px;font-weight:bold">🤖 ${_esc(s.last_action)}</span>`
+              : `<span style="background:rgba(255,255,255,0.06);color:#90a4ae;padding:1px 8px;border-radius:10px;font-size:11px">✏️ تعديل يدوي</span>`
+            }
             &nbsp; 🕒 ${_esc(formattedDate)}
             &nbsp;•&nbsp; ${_esc(catNames[s.category_id] || s.category_id || '')}
           </div>
