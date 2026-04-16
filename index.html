@@ -251,10 +251,20 @@
 
 <!-- مودال السجل -->
 <div class="ai-modal" id="history-modal">
-  <div class="ai-modal-content">
+  <div class="ai-modal-content large">
     <h3 style="color:#d4af37;margin-bottom:14px">📜 سجل التغييرات</h3>
-    <p style="color:#90a4ae;font-size:13px;margin-bottom:10px">يحفظ آخر 10 نسخ من القصة الحالية تلقائياً</p>
-    <div id="history-list" class="history-panel"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button id="htab-ai" onclick="switchHistoryTab('ai')" style="width:auto;padding:7px 16px;font-size:13px;background:#d4af37;color:#0a1929">🤖 تعديلات AI</button>
+      <button id="htab-db" onclick="switchHistoryTab('db')" style="width:auto;padding:7px 16px;font-size:13px;background:#1e4976;color:#fff">🗄️ آخر تعديلات Supabase</button>
+    </div>
+    <div id="history-panel-ai">
+      <p style="color:#90a4ae;font-size:12px;margin-bottom:8px">آخر 10 تعديلات AI في هذه الجلسة — اضغط لاستعادة النص القديم</p>
+      <div id="history-list" class="history-panel"></div>
+    </div>
+    <div id="history-panel-db" style="display:none">
+      <p style="color:#90a4ae;font-size:12px;margin-bottom:8px">آخر 20 قصة اتعدلت في Supabase مرتبة من الأحدث للأقدم</p>
+      <div id="history-list-db" class="history-panel"></div>
+    </div>
     <button class="secondary" onclick="closeHistory()" style="margin-top:14px">إغلاق</button>
   </div>
 </div>
@@ -1064,24 +1074,86 @@ function scheduleAutoSave() {
 // ═══════════════════════════════════════════════════════════
 function saveToHistory(action, oldText, newText) {
   if (!oldText || oldText === newText) return;
+  // احفظ اسم القصة الحالية مع كل تعديل
+  const storyTitle = document.getElementById('story-title')?.value?.trim() || 'بدون عنوان';
   let history = JSON.parse(localStorage.getItem('story_history') || '[]');
-  history.unshift({ action, oldText, newText, timestamp: Date.now(),
+  history.unshift({
+    action, oldText, newText,
+    storyTitle,
+    timestamp: Date.now(),
     oldWords: oldText.trim().split(/\s+/).filter(Boolean).length,
-    newWords: newText.trim().split(/\s+/).filter(Boolean).length });
+    newWords: newText.trim().split(/\s+/).filter(Boolean).length
+  });
   localStorage.setItem('story_history', JSON.stringify(history.slice(0, 10)));
 }
 
+function switchHistoryTab(tab) {
+  const isAI = tab === 'ai';
+  document.getElementById('history-panel-ai').style.display = isAI ? 'block' : 'none';
+  document.getElementById('history-panel-db').style.display = isAI ? 'none' : 'block';
+  document.getElementById('htab-ai').style.background = isAI ? '#d4af37' : '#1e4976';
+  document.getElementById('htab-ai').style.color = isAI ? '#0a1929' : '#fff';
+  document.getElementById('htab-db').style.background = isAI ? '#1e4976' : '#d4af37';
+  document.getElementById('htab-db').style.color = isAI ? '#fff' : '#0a1929';
+  if (!isAI) loadSupabaseHistory();
+}
+
+async function loadSupabaseHistory() {
+  const list = document.getElementById('history-list-db');
+  list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">⏳ جاري التحميل...</p>';
+  try {
+    const { data, error } = await sb
+      .from('stories')
+      .select('id, title, updated_at, created_at, category_id, is_published')
+      .order('updated_at', { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا توجد قصص</p>';
+      return;
+    }
+    const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
+    list.innerHTML = data.map(s => {
+      const updDate = new Date(s.updated_at || s.created_at);
+      const formattedDate = updDate.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const isNew = (Date.now() - updDate.getTime()) < 3600000; // أقل من ساعة
+      return `<div class="history-item" onclick="editStory(${parseInt(s.id)});closeHistory()">
+        <div class="info">
+          <div class="label">
+            ${_esc(s.title || 'بدون عنوان')}
+            ${isNew ? '<span style="background:#2e7d32;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px">جديد</span>' : ''}
+          </div>
+          <div class="meta">
+            🕒 ${_esc(formattedDate)}
+            &nbsp;•&nbsp; ${_esc(catNames[s.category_id] || s.category_id || '')}
+            &nbsp;•&nbsp; ${s.is_published ? '<span style="color:#4caf50">منشورة</span>' : '<span style="color:#90a4ae">مسودة</span>'}
+          </div>
+        </div>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();editStory(${parseInt(s.id)});closeHistory()">✏️ تعديل</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<p style="text-align:center;color:#d32f2f;padding:20px">خطأ: ${_esc(e.message)}</p>`;
+  }
+}
+
 function showHistory() {
+  // عرض تاب AI أولاً
+  switchHistoryTab('ai');
+  // تحميل سجل AI
   const history = JSON.parse(localStorage.getItem('story_history') || '[]');
   const list = document.getElementById('history-list');
-  const actionNames = { improve_content: '📝 تحسين', expand_content: '📏 تطويل', continue_expand: '🚀 تطويل إضافي', fix_grammar: '✅ تصحيح', generate_story: '💡 توليد', ai_apply: '✓ تطبيق AI' };
+  const actionNames = { improve_content: '📝 تحسين الصياغة', expand_content: '📏 تطويل', continue_expand: '🚀 تطويل إضافي', fix_grammar: '✅ تصحيح لغوي', generate_story: '💡 توليد قصة', ai_apply: '✓ تطبيق AI' };
   list.innerHTML = history.length === 0
-    ? '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل بعد</p>'
+    ? '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل AI بعد — جرب تحسين أو تطويل قصة أولاً</p>'
     : history.map((h, i) =>
         `<div class="history-item" onclick="restoreFromHistory(${i})">
            <div class="info">
-             <div class="label">${_esc(actionNames[h.action] || h.action)}</div>
-             <div class="meta">${new Date(h.timestamp).toLocaleString('ar-EG')} • ${h.oldWords} → ${h.newWords} كلمة</div>
+             <div class="label">
+               ${_esc(actionNames[h.action] || h.action)}
+               ${h.storyTitle ? `<span style="color:#90a4ae;font-weight:normal;font-size:11px;margin-right:6px">— ${_esc(h.storyTitle)}</span>` : ''}
+             </div>
+             <div class="meta">${new Date(h.timestamp).toLocaleString('ar-EG')} &nbsp;•&nbsp; ${h.oldWords} → ${h.newWords} كلمة</div>
            </div>
            <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();restoreFromHistory(${i})">↶ استعادة</button>
          </div>`
@@ -1094,6 +1166,9 @@ function restoreFromHistory(index) {
   if (!history[index]) return;
   if (!confirm('استبدال النص الحالي بالنسخة القديمة؟')) return;
   document.getElementById('story-content').value = history[index].oldText;
+  if (history[index].storyTitle && !document.getElementById('story-id').value) {
+    document.getElementById('story-title').value = history[index].storyTitle;
+  }
   updateLiveStats();
   closeHistory();
   toast('تمت الاستعادة ↶', 'success');
