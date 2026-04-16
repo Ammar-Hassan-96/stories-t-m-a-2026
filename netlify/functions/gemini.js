@@ -1,8 +1,8 @@
 /**
  * Gemini AI Backend - Secure Proxy
- * ✅ الـ API key محمي تماماً على السيرفر - لا يُرسَل للـ client أبداً
- * ✅ كل الطلبات تمر من هنا فقط
- * ✅ timeout handling + input validation
+ * ✅ المهام السريعة (< 25s): تتنفذ على السيرفر — الـ key مخفي تماماً
+ * ✅ المهام البطيئة (تطويل القصة): الـ key يتبعت للـ client بعد التحقق من Supabase JWT
+ * ✅ model whitelist + input validation + timeout
  */
 
 const ALLOWED_MODELS = new Set([
@@ -11,13 +11,36 @@ const ALLOWED_MODELS = new Set([
   "gemini-1.5-flash",
 ]);
 
+// المهام البطيئة اللي بتاخد أكثر من 25s — تتنفذ client-side
+const SLOW_ACTIONS = new Set(["expand_content", "continue_expand", "generate_story"]);
+
 const MAX_PROMPT_LENGTH = 20000;
+
+// ✅ التحقق من Supabase JWT — بيأكد إن المستخدم logged in فعلاً
+async function verifySupabaseToken(authHeader) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7);
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "apikey": SUPABASE_ANON_KEY,
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 exports.handler = async (event) => {
   const SITE_URL = process.env.URL || process.env.DEPLOY_URL || "";
   const headers = {
     "Access-Control-Allow-Origin": SITE_URL || "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 
@@ -42,12 +65,20 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
-  // ⛔ مفيش get_key - الـ key لا يخرج من السيرفر أبداً
+  // ✅ get_key للمهام البطيئة — بس بعد التحقق من الـ JWT
   if (body.action === "get_key") {
+    const isValid = await verifySupabaseToken(event.headers["authorization"]);
+    if (!isValid) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: "غير مصرح — يجب تسجيل الدخول أولاً" }),
+      };
+    }
     return {
-      statusCode: 403,
+      statusCode: 200,
       headers,
-      body: JSON.stringify({ error: "غير مسموح" }),
+      body: JSON.stringify({ key: GEMINI_KEY }),
     };
   }
 
