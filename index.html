@@ -767,54 +767,72 @@ Begin the prompt now:`;
     
     console.log("[Image Prompt]", imagePrompt);
     
-    // ═══ الخطوة 2: Pollinations - مباشرة من المتصفح (بلا timeout!) ═══
-    showLoading('🎨 الخطوة 2/2: توليد الصورة... (قد يستغرق دقيقة - مفيش حد للوقت)');
-    
+    // ═══ الخطوة 2: Imagen 3 (primary) → Pollinations (fallback) ═══
+    showLoading('🎨 الخطوة 2/2: توليد الصورة بـ Imagen 3...');
+
     const seed = Math.floor(Math.random() * 9999999);
     const encodedPrompt = encodeURIComponent(imagePrompt);
-    
-    const imageSources = [
-      {
-        name: "Turbo",
-        url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&model=turbo&seed=${seed}&nologo=true`
-      },
-      {
-        name: "Flux",
-        url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&model=flux&seed=${seed}&nologo=true`
-      }
-    ];
-    
     let imageBlob = null;
     let usedSource = null;
     let lastError = null;
-    
-    for (const source of imageSources) {
-      try {
-        showLoading(`🎨 جاري التوليد بـ ${source.name}... (مفيش حد للوقت)`);
-        const imgRes = await fetch(source.url);
-        if (!imgRes.ok) {
-          lastError = `${source.name} رد بـ ${imgRes.status}`;
-          console.log(`[${source.name}] فشل: ${lastError}`);
-          continue;
+
+    // ── Primary: Imagen 3 عبر Netlify Function ──
+    try {
+      showLoading('🎨 الخطوة 2/2: Imagen 3 يرسم الصورة...');
+      const imagenRes = await fetch('/.netlify/functions/imagen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: imagePrompt })
+      });
+      if (imagenRes.ok) {
+        const imagenData = await imagenRes.json();
+        if (imagenData.imageBase64) {
+          const byteString = atob(imagenData.imageBase64);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+          imageBlob = new Blob([ab], { type: 'image/png' });
+          usedSource = 'Imagen 3';
+          console.log('[Imagen 3] ✓ نجح: ' + imageBlob.size + ' bytes');
+        } else {
+          lastError = imagenData.error || 'رد فاضي من Imagen 3';
+          console.log('[Imagen 3] فشل: ' + lastError);
         }
-        const blob = await imgRes.blob();
-        if (blob.size < 1000) {
-          lastError = `${source.name} رد بصورة فاضية`;
-          continue;
+      } else {
+        lastError = 'Imagen 3 رد بـ ' + imagenRes.status;
+        console.log('[Imagen 3] فشل: ' + lastError);
+      }
+    } catch (err) {
+      lastError = 'Imagen 3: ' + err.message;
+      console.log('[Imagen 3] خطأ: ' + err.message);
+    }
+
+    // ── Fallback: Pollinations (مجاني، مفيش timeout) ──
+    if (!imageBlob) {
+      const pollinationsSources = [
+        { name: 'Turbo', url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&model=turbo&seed=${seed}&nologo=true` },
+        { name: 'Flux',  url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&model=flux&seed=${seed}&nologo=true` }
+      ];
+      for (const source of pollinationsSources) {
+        try {
+          showLoading(`🎨 Imagen 3 فشل، جاري المحاولة بـ ${source.name}...`);
+          const imgRes = await fetch(source.url);
+          if (!imgRes.ok) { lastError = `${source.name} رد بـ ${imgRes.status}`; continue; }
+          const blob = await imgRes.blob();
+          if (blob.size < 1000) { lastError = `${source.name} رد بصورة فاضية`; continue; }
+          imageBlob = blob;
+          usedSource = source.name;
+          console.log(`[${source.name}] ✓ نجح: ${blob.size} bytes`);
+          break;
+        } catch (err) {
+          lastError = `${source.name}: ${err.message}`;
+          console.log(`[${source.name}] خطأ: ${err.message}`);
         }
-        imageBlob = blob;
-        usedSource = source.name;
-        console.log(`[${source.name}] ✓ نجح: ${blob.size} bytes`);
-        break;
-      } catch (err) {
-        lastError = `${source.name}: ${err.message}`;
-        console.log(`[${source.name}] خطأ: ${err.message}`);
-        continue;
       }
     }
-    
+
     if (!imageBlob) {
-      throw new Error(`فشل التوليد من جميع المصادر. آخر خطأ: ${lastError || 'غير معروف'}`);
+      throw new Error('فشل التوليد من جميع المصادر. آخر خطأ: ' + (lastError || 'غير معروف'));
     }
     
     // ═══ رفع على Supabase ═══
