@@ -970,7 +970,7 @@ filtered.map(s => {
   const itemBorder = isReviewed ? 'border-right: 4px solid #16a085;' : 'border-right: 4px solid transparent;';
 
   return `
-    <div class="story-item" style="${itemOpacity} ${itemBorder} transition: all 0.3s;">
+    <div class="story-item" data-story-id="${s.id}" style="${itemOpacity} ${itemBorder} transition: all 0.3s;">
       <img class="story-img" src="${s.image_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjMWU0OTc2Ii8+PC9zdmc+'}" alt="">
       <div class="story-info">
         <div class="story-title">${escapeHtml(s.title)}</div>
@@ -1105,7 +1105,16 @@ async function saveStory() {
     toast(id ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
     // 🧹 امسح المسودة بعد الحفظ الناجح
     localStorage.removeItem('story_draft');
+    const editedId = id ? parseInt(id) : null;
     resetForm();
+    // 🎯 بعد التعديل، روح لنفس القصة في القائمة
+    if (editedId) {
+      await loadStories();
+      setTimeout(() => {
+        const el = document.querySelector(`[data-story-id="${editedId}"]`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
   } catch (e) {
     toast(e.message || 'حصل خطأ، حاول تاني', 'error');
   }
