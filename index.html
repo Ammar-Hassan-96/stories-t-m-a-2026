@@ -799,7 +799,7 @@ function showDashboard() {
 async function loadStories() {
   const { data, error } = await sb
     .from('stories')
-    .select('*')
+    .select('id, title, content, image_url, display_order, is_published, category_id, author, created_at, updated_at, reviewed_at, last_action, last_action_at')
     .order('display_order', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) return toast('خطأ: ' + error.message, 'error');
@@ -863,6 +863,7 @@ function renderStories() {
             <span style="color:#90a4ae;font-size:11px">🔢 ${s.display_order}</span>
             <span style="color:${wColor};font-size:11px;font-weight:bold">📝 ${wordCount.toLocaleString('ar-EG')} كلمة</span>
             <span style="color:#d4af37;font-size:11px">🕒 ${_esc(formattedTime)}</span>
+            ${s.last_action ? `<span style="background:rgba(212,175,55,0.15);color:#d4af37;font-size:10px;padding:1px 7px;border-radius:10px">🤖 ${_esc(s.last_action)}</span>` : ''}
           </div>
         </div>
         <div class="story-actions">
@@ -1074,17 +1075,29 @@ function scheduleAutoSave() {
 // ═══════════════════════════════════════════════════════════
 function saveToHistory(action, oldText, newText) {
   if (!oldText || oldText === newText) return;
-  // احفظ اسم القصة الحالية مع كل تعديل
+  const storyId = document.getElementById('story-id')?.value;
   const storyTitle = document.getElementById('story-title')?.value?.trim() || 'بدون عنوان';
-  let history = JSON.parse(localStorage.getItem('story_history') || '[]');
-  history.unshift({
-    action, oldText, newText,
-    storyTitle,
-    timestamp: Date.now(),
-    oldWords: oldText.trim().split(/\s+/).filter(Boolean).length,
-    newWords: newText.trim().split(/\s+/).filter(Boolean).length
-  });
-  localStorage.setItem('story_history', JSON.stringify(history.slice(0, 10)));
+  const oldWords = oldText.trim().split(/\s+/).filter(Boolean).length;
+  const newWords = newText.trim().split(/\s+/).filter(Boolean).length;
+  const actionNames = { improve_content: 'تحسين الصياغة', expand_content: 'تطويل', continue_expand: 'تطويل إضافي', fix_grammar: 'تصحيح لغوي', generate_story: 'توليد قصة', ai_apply: 'تطبيق AI' };
+  const actionLabel = actionNames[action] || action;
+  // حفظ في Supabase لو في قصة محددة
+  if (storyId && sb) {
+    sb.from('stories').update({
+      last_action: actionLabel,
+      last_action_at: new Date().toISOString()
+    }).eq('id', storyId).then(({ error }) => {
+      if (error) console.warn('[saveToHistory]', error.message);
+      else {
+        // تحديث local stories array
+        const idx = stories.findIndex(s => String(s.id) === String(storyId));
+        if (idx !== -1) {
+          stories[idx].last_action = actionLabel;
+          stories[idx].last_action_at = new Date().toISOString();
+        }
+      }
+    });
+  }
 }
 
 function switchHistoryTab(tab) {
@@ -1104,32 +1117,35 @@ async function loadSupabaseHistory() {
   try {
     const { data, error } = await sb
       .from('stories')
-      .select('id, title, updated_at, created_at, category_id, is_published')
-      .order('updated_at', { ascending: false })
+      .select('id, title, updated_at, created_at, category_id, is_published, last_action, last_action_at')
+      .not('last_action_at', 'is', null)
+      .order('last_action_at', { ascending: false })
       .limit(20);
     if (error) throw error;
     if (!data || data.length === 0) {
-      list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا توجد قصص</p>';
+      list.innerHTML = '<p style="text-align:center;color:#90a4ae;padding:20px">لا يوجد سجل تعديلات AI بعد — عدّل قصة وطبّق تحسيناً أولاً</p>';
       return;
     }
     const catNames = { drama: 'دراما', horror: 'رعب', kids: 'أطفال', 'sci-fi': 'خيال علمي', thriller: 'مشوقة', islamic: 'دينية', love: 'حب' };
+    const actionColors = { 'تطويل': '#8e44ad', 'تطويل إضافي': '#e74c3c', 'تحسين الصياغة': '#2980b9', 'تصحيح لغوي': '#27ae60', 'توليد قصة': '#f39c12', 'تطبيق AI': '#16a085' };
     list.innerHTML = data.map(s => {
-      const updDate = new Date(s.updated_at || s.created_at);
-      const formattedDate = updDate.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      const isNew = (Date.now() - updDate.getTime()) < 3600000; // أقل من ساعة
+      const actionDate = new Date(s.last_action_at);
+      const formattedDate = actionDate.toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const isRecent = (Date.now() - actionDate.getTime()) < 3600000;
+      const actionColor = actionColors[s.last_action] || '#d4af37';
       return `<div class="history-item" onclick="editStory(${parseInt(s.id)});closeHistory()">
         <div class="info">
           <div class="label">
             ${_esc(s.title || 'بدون عنوان')}
-            ${isNew ? '<span style="background:#2e7d32;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px">جديد</span>' : ''}
+            ${isRecent ? '<span style="background:#2e7d32;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;margin-right:6px">للتو</span>' : ''}
           </div>
-          <div class="meta">
-            🕒 ${_esc(formattedDate)}
+          <div class="meta" style="margin-top:3px">
+            <span style="background:${actionColor}22;color:${actionColor};padding:1px 8px;border-radius:10px;font-size:11px;font-weight:bold">${_esc(s.last_action || '')}</span>
+            &nbsp; 🕒 ${_esc(formattedDate)}
             &nbsp;•&nbsp; ${_esc(catNames[s.category_id] || s.category_id || '')}
-            &nbsp;•&nbsp; ${s.is_published ? '<span style="color:#4caf50">منشورة</span>' : '<span style="color:#90a4ae">مسودة</span>'}
           </div>
         </div>
-        <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();editStory(${parseInt(s.id)});closeHistory()">✏️ تعديل</button>
+        <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();editStory(${parseInt(s.id)});closeHistory()">✏️ فتح</button>
       </div>`;
     }).join('');
   } catch (e) {
