@@ -835,7 +835,7 @@ function renderStories() {
       let wColor = wordCount < 500 ? '#e74c3c' : wordCount < 1000 ? '#e67e22' : wordCount < 1500 ? '#f1c40f' : '#27ae60';
       const reviewedAt = s.reviewed_at ? new Date(s.reviewed_at).getTime() : 0;
       const updatedAt = new Date(s.updated_at || s.created_at || 0).getTime();
-      const isReviewed = reviewedAt > 0 && reviewedAt >= updatedAt;
+      const isReviewed = s.reviewed_at ? true : false;
 
       // ✅ image_url مفلتر عبر _safeUrl
       const imgSrc = _safeUrl(s.image_url) || PLACEHOLDER;
