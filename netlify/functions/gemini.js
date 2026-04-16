@@ -1,6 +1,7 @@
 /**
- * 🏆 Gemini AI Backend - Secure Server-Side Proxy
- * الـ API key محفوظ في environment variables على Netlify (مش client-side)
+ * 🏆 Gemini AI Backend - Hybrid Proxy
+ * ⚡ سريع (< 10s): server يكلم Gemini مباشرة
+ * 🐢 بطيء (30-60s): يرجع الـ key للـ client يكلم Gemini مباشرة (مفيش timeout)
  */
 
 exports.handler = async (event) => {
@@ -29,6 +30,16 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
+  // 🐢 طلب الـ key للمهام البطيئة (client-side direct call)
+  if (body.action === "get_key") {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ key: GEMINI_KEY })
+    };
+  }
+
+  // ⚡ المهام السريعة → server يكلم Gemini
   const { model, prompt } = body;
   if (!model || !prompt) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "model و prompt مطلوبين" }) };
