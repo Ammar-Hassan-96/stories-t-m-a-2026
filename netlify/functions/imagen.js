@@ -1,6 +1,7 @@
 /**
- * 🎨 Imagen 3 - Google AI Image Generation
- * بيستخدم نفس GEMINI_API_KEY
+ * 🎨 Gemini Image Generation
+ * بيستخدم gemini-2.0-flash-preview-image-generation
+ * نفس GEMINI_API_KEY
  */
 
 exports.handler = async (event) => {
@@ -30,20 +31,15 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "prompt مطلوب" }) };
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_KEY}`;
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: "16:9",
-          safetyFilterLevel: "block_few",
-          personGeneration: "allow_adult"
-        }
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
       })
     });
 
@@ -57,7 +53,17 @@ exports.handler = async (event) => {
       };
     }
 
-    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
+    // استخرج الصورة من الرد
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    let imageBase64 = null;
+
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        imageBase64 = part.inlineData.data;
+        break;
+      }
+    }
+
     if (!imageBase64) {
       return { statusCode: 500, headers, body: JSON.stringify({ error: "مفيش صورة في الرد" }) };
     }
