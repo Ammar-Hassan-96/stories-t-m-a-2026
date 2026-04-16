@@ -835,7 +835,7 @@ function renderStories() {
       let wColor = wordCount < 500 ? '#e74c3c' : wordCount < 1000 ? '#e67e22' : wordCount < 1500 ? '#f1c40f' : '#27ae60';
       const reviewedAt = s.reviewed_at ? new Date(s.reviewed_at).getTime() : 0;
       const updatedAt = new Date(s.updated_at || s.created_at || 0).getTime();
-      const isReviewed = reviewedAt > 0 && reviewedAt >= updatedAt;
+      const isReviewed = !!story.reviewed_at;
 
       // ✅ image_url مفلتر عبر _safeUrl
       const imgSrc = _safeUrl(s.image_url) || PLACEHOLDER;
@@ -869,7 +869,7 @@ async function toggleReviewed(storyId) {
   if (!story) return;
   const updatedAt = new Date(story.updated_at || story.created_at || 0).getTime();
   const reviewedAt = story.reviewed_at ? new Date(story.reviewed_at).getTime() : 0;
-  const isReviewed = reviewedAt > 0 && reviewedAt >= updatedAt;
+  const isReviewed = !!s.reviewed_at;
   const newVal = isReviewed ? null : new Date().toISOString();
   try {
     const { error } = await sb.from('stories').update({ reviewed_at: newVal }).eq('id', storyId);
@@ -893,7 +893,7 @@ function updateStats() {
     if (!s.reviewed_at) continue;
     const rAt = new Date(s.reviewed_at).getTime();
     const uAt = new Date(s.updated_at || s.created_at || 0).getTime();
-    if (rAt >= uAt) reviewed++;
+    if (s.reviewed_at) reviewed++;
   }
   const el = document.getElementById('stat-reviewed');
   if (el) el.textContent = reviewed;
