@@ -1092,7 +1092,7 @@ async function loadSupabaseHistory() {
   try {
     const { data, error } = await sb
       .from('stories')
-      .select('id, title, content, updated_at, created_at, category_id, is_published, last_action, last_action_at')
+      .select('id, title, updated_at, created_at, category_id, is_published, last_action, last_action_at')
       .order('updated_at', { ascending: false })
       .limit(20);
     if (error) throw error;
@@ -1122,7 +1122,6 @@ async function loadSupabaseHistory() {
             }
             &nbsp; 🕒 ${_esc(formattedDate)}
             &nbsp;•&nbsp; ${_esc(catNames[s.category_id] || s.category_id || '')}
-            &nbsp;•&nbsp; <span style="color:#d4af37;font-size:11px;font-weight:bold">📝 ${(s.content ? s.content.trim().split(/\\s+/).filter(Boolean).length : 0).toLocaleString('ar-EG')} كلمة</span>
           </div>
         </div>
         <button class="secondary" style="width:auto;padding:6px 12px;font-size:12px" onclick="event.stopPropagation();editStory(${parseInt(s.id)});closeHistory()">✏️ فتح</button>
