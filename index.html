@@ -385,19 +385,22 @@
 const AI_ENDPOINT = "/.netlify/functions/gemini";
 
 // 🔑 Gemini API Key - محفوظ server-side في Netlify environment variables
-// (مش محتاج client-side بعد كده)
 let GEMINI_KEY = '';
 
-// 🎯 موديلات Gemini حسب الـ action (بترتيب الأفضل)
+// 🎯 موديلات Gemini حسب الـ action
 const GEMINI_MODELS = {
-  suggest_titles: ["gemini-2.5-flash"],
+  suggest_titles:   ["gemini-2.5-flash"],
   suggest_category: ["gemini-2.5-flash"],
-  fix_grammar: ["gemini-2.5-flash", "gemini-2.5-pro"],
-  improve_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
-  expand_content: ["gemini-2.5-pro", "gemini-2.5-flash"],
-  continue_expand: ["gemini-2.5-pro", "gemini-2.5-flash"],
-  generate_story: ["gemini-2.5-pro", "gemini-2.5-flash"],
+  fix_grammar:      ["gemini-2.5-flash", "gemini-2.5-pro"],
+  improve_content:  ["gemini-2.5-pro",   "gemini-2.5-flash"],
+  expand_content:   ["gemini-2.5-pro",   "gemini-2.5-flash"],
+  continue_expand:  ["gemini-2.5-pro",   "gemini-2.5-flash"],
+  generate_story:   ["gemini-2.5-pro",   "gemini-2.5-flash"],
 };
+
+// ⚡ Actions سريعة (< 10s) → Netlify Function (آمن، الـ key مخفي)
+// 🐢 Actions بطيئة (30-60s) → Client مباشرة (مفيش timeout)
+const SLOW_ACTIONS = new Set(["expand_content", "continue_expand", "generate_story"]);
 
 // 📝 Prompts
 function buildPrompt(action, { content, title, category, prompt }) {
@@ -437,20 +440,44 @@ function ensureGeminiKey() {
   return true;
 }
 
-// 🚀 استدعاء Gemini عبر Netlify Function (الـ key محفوظ server-side)
-async function callGeminiDirect(model, promptText) {
+// 🚀 استدعاء Gemini - هجين (server للسريع، client للبطيء)
+async function callGeminiDirect(model, promptText, forceDirect = false) {
+  // المهام البطيئة أو لما forceDirect = true → مباشرة من المتصفح (مفيش timeout)
+  if (forceDirect) {
+    const GEMINI_SERVER_KEY = await fetch("/.netlify/functions/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_key" })
+    }).then(r => r.json()).then(d => d.key).catch(() => null);
+
+    if (!GEMINI_SERVER_KEY) throw new Error("تعذر الحصول على المفتاح");
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_SERVER_KEY}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    let text = "";
+    for (const p of parts) if (p.text) text += p.text;
+    if (!text.trim()) throw new Error(`رد فاضي من ${model}`);
+    return text.trim();
+  }
+
+  // المهام السريعة → Netlify Function (الـ key مخفي تماماً)
   const res = await fetch("/.netlify/functions/gemini", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, prompt: promptText })
   });
-
   const data = await res.json();
-
-  if (!res.ok || data.error) {
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-
+  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
   return data.text;
 }
 
@@ -469,10 +496,14 @@ async function callAI(payload) {
     const models = GEMINI_MODELS[payload.action] || ["gemini-2.5-flash"];
     let lastError = null;
 
+    // هل المهمة بطيئة؟ → client مباشرة (مفيش timeout)
+    const isSlow = SLOW_ACTIONS.has(payload.action);
+    if (isSlow) console.log(`[AI] مهمة بطيئة → client-side مباشرة`);
+
     for (const model of models) {
       try {
         console.log(`[AI] جاري المحاولة بـ ${model}...`);
-        const text = await callGeminiDirect(model, promptText);
+        const text = await callGeminiDirect(model, promptText, isSlow);
         console.log(`[AI] ✓ نجح ${model}: ${text.length} حرف`);
         return { success: true, text, model, image: null };
       } catch (err) {
