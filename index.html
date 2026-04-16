@@ -393,7 +393,10 @@ function isRetryable(msg) {
          m.includes("try again") || m.includes("unavailable");
 }
 
-// ✅ كل الطلبات النصية عبر السيرفر فقط — مفيش key_fetch
+// المهام البطيئة تتنفذ client-side (> 25s) — مفيش Netlify timeout
+const SLOW_ACTIONS = new Set(["expand_content", "continue_expand", "generate_story"]);
+
+// ✅ المهام السريعة عبر السيرفر — الـ key مخفي تماماً
 async function callGeminiViaServer(model, promptText) {
   const res = await fetch(AI_ENDPOINT, {
     method: "POST",
@@ -405,6 +408,40 @@ async function callGeminiViaServer(model, promptText) {
   return data.text;
 }
 
+// ✅ المهام البطيئة client-side — بعد التحقق من الـ JWT
+async function callGeminiDirect(model, promptText) {
+  // اجيب الـ key من السيرفر مع الـ JWT — السيرفر بيتحقق إن المستخدم logged in
+  const session = await sb?.auth?.getSession();
+  const token = session?.data?.session?.access_token;
+  if (!token) throw new Error("يجب تسجيل الدخول أولاً");
+
+  const keyRes = await fetch(AI_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ action: "get_key" })
+  });
+  const keyData = await keyRes.json();
+  if (!keyRes.ok || !keyData.key) throw new Error(keyData.error || "تعذر الحصول على المفتاح");
+
+  // اتصال مباشر بـ Gemini — بدون timeout من Netlify
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyData.key}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: promptText }] }],
+      generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  let text = "";
+  for (const p of parts) if (p.text) text += p.text;
+  if (!text.trim()) throw new Error(`رد فاضي من ${model}`);
+  return text.trim();
+}
+
 let isLoading = false;
 let pendingAIText = '';
 
@@ -414,10 +451,15 @@ async function callAI(payload) {
   try {
     const promptText = buildPrompt(payload.action, payload);
     const models = GEMINI_MODELS[payload.action] || ["gemini-2.5-flash"];
+    const isSlow = SLOW_ACTIONS.has(payload.action);
     let lastError = null;
     for (const model of models) {
       try {
-        const text = await callGeminiViaServer(model, promptText);
+        // المهام البطيئة → client-side مباشرة (مفيش timeout)
+        // المهام السريعة → السيرفر (الـ key محمي)
+        const text = isSlow
+          ? await callGeminiDirect(model, promptText)
+          : await callGeminiViaServer(model, promptText);
         return { success: true, text, model };
       } catch (err) {
         lastError = err.message;
