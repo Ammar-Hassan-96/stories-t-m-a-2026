@@ -1130,7 +1130,7 @@ function editStory(id) {
     img.style.display = 'block';
   }
   document.getElementById('form-title').textContent = '✏️ تعديل القصة';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function deleteStory(id) {
