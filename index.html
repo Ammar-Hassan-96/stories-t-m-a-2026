@@ -657,8 +657,7 @@ async function aiGenerateImage() {
   showLoading('🎨 الخطوة 1/2: تحليل القصة...');
   try {
     // Gemini يولد prompt إنجليزي عبر السيرفر
-    const directorPrompt = `You are an outstanding conceptual artist. Create one detailed English image (maximum 500 characters) of the most powerful visual moment in this Arabic story. If these images are Islamic, completely conceal the face and do not show it, as it is forbidden to depict the Prophet's companions in images. Also, read the article very, very carefully and create a realistic image that truly represents the story.
-
+const directorPrompt = `You are a cinematic concept artist; carefully read the Arabic story and create one ultra-realistic image prompt (max 500 characters) capturing the most powerful visual moment, with one clear subject, action, rich environment details, dramatic lighting, shadows, depth of field, 35mm lens, strong emotional intensity, and if Islamic or historical, conceal faces (back view, shadow, or covered). Output only the prompt.`;
 STORY: "${title}" — ${content.substring(0, 1500)}
 
 Include: character appearance, specific setting, dramatic action, mood (${catVisual.mood}), lighting (${catVisual.lighting}), style (${styleHint}).
