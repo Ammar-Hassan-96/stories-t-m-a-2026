@@ -657,7 +657,22 @@ async function aiGenerateImage() {
   showLoading('🎨 الخطوة 1/2: تحليل القصة...');
   try {
     // Gemini يولد prompt إنجليزي عبر السيرفر
-const directorPrompt = `You are a cinematic concept artist; carefully read the Arabic story and create one ultra-realistic image prompt (max 500 characters) capturing the most powerful visual moment, with one clear subject, action, rich environment details, dramatic lighting, shadows, depth of field, 35mm lens, strong emotional intensity, and if Islamic or historical, conceal faces (back view, shadow, or covered). Output only the prompt.
+const directorPrompt = `You are a world-class cinematic concept artist and film director; carefully read the Arabic story and create one ultra-realistic image prompt (max 500 characters) capturing the most powerful visual moment.
+
+Describe a single frame like a movie shot with:
+- precise subject and action
+- rich environment and textures
+- time of day and weather
+- cinematic lighting (contrast, shadows, highlights)
+- camera angle and composition (close-up, wide, low angle, etc.)
+- depth of field and 35mm lens feel
+- strong emotional tone
+
+Make it visually striking and specific, not generic.
+
+If Islamic or historical, conceal faces (back view, shadow, or covered).
+
+Output only the image prompt.
 STORY: "${title}" — ${content.substring(0, 1500)}
 
 Include: character appearance, specific setting, dramatic action, mood (${catVisual.mood}), lighting (${catVisual.lighting}), style (${styleHint}).
