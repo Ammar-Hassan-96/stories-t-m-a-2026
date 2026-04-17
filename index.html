@@ -893,7 +893,7 @@ function updateStats() {
     if (!s.reviewed_at) continue;
     const rAt = new Date(s.reviewed_at).getTime();
     const uAt = new Date(s.updated_at || s.created_at || 0).getTime();
-    if (rAt >= uAt) reviewed++;
+    if (s.reviewed_at) reviewed++;
   }
   const el = document.getElementById('stat-reviewed');
   if (el) el.textContent = reviewed;
